@@ -6,8 +6,8 @@
 # version and sha256 are kept current by the release workflow
 # (.github/workflows/release.yml).
 cask "pimbar" do
-  version "0.1.0"
-  sha256 "275f3ff6da71face4974270f23e6b796bd01954d52cb01d980ff66c29acc2c83"
+  version "0.2.1"
+  sha256 "62297b07f75526633694c82259bce488cbb50131e9e128ea36bab56d975ec9ef"
 
   url "https://github.com/blturan/pimbar/releases/download/v#{version}/pimbar_#{version}_aarch64.dmg"
   name "pimbar"
