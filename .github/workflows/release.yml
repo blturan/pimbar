@@ -91,5 +91,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Casks/pimbar.rb
-          git commit -m "Cask: pimbar ${GITHUB_REF_NAME#v}" || exit 0
+          git commit -m "chore: update Homebrew cask to pimbar ${GITHUB_REF_NAME#v}" || exit 0
           git push origin HEAD
