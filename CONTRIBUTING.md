@@ -75,10 +75,11 @@ recorded with tooling that isn't in the repository.
 
 ## Releasing
 
-Bump `version` in `Cargo.toml`, commit, then tag and push:
+Bump `version` in `Cargo.toml`, commit, then tag and push. The tag has to be
+signed with a key in `.github/allowed_signers`:
 
 ```sh
-git tag v0.2.0 && git push origin v0.2.0
+git tag -s v0.2.0 -m "pimbar 0.2.0" && git push origin v0.2.0
 ```
 
 `.github/workflows/release.yml` checks the version, builds the .dmg, publishes

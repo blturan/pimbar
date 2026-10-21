@@ -19,6 +19,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Tag is signed
+        run: |
+          # actions/checkout drops the tag's signature
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          git config gpg.format ssh
+          git config gpg.ssh.allowedSignersFile .github/allowed_signers
+          git verify-tag "$GITHUB_REF_NAME" || {
+            echo "::error::$GITHUB_REF_NAME isn't signed by a key in .github/allowed_signers"
+            exit 1
+          }
+
       - name: Tag matches Cargo.toml
         run: |
           TAG="${GITHUB_REF_NAME#v}"
