@@ -7,7 +7,7 @@
 # (.github/workflows/release.yml).
 cask "pimbar" do
   version "0.1.0"
-  sha256 "14661241e6a46ea88ad54315d40b1498c3e8d450543502db42eb33d456e5028f"
+  sha256 "275f3ff6da71face4974270f23e6b796bd01954d52cb01d980ff66c29acc2c83"
 
   url "https://github.com/blturan/pimbar/releases/download/v#{version}/pimbar_#{version}_aarch64.dmg"
   name "pimbar"
