@@ -1,0 +1,34 @@
+[package]
+name = "pimbar"
+version = "0.1.0"
+edition = "2024"
+description = "Azure PIM in your macOS menu bar"
+license = "Apache-2.0"
+repository = "https://github.com/blturan/pimbar"
+authors = ["blturan"]
+
+[dependencies]
+anyhow = "1.0.104"
+base64 = "0.23.1"
+chrono = { version = "0.4.45", features = ["serde"] }
+notify-rust = { version = "4.18", features = ["preview-macos-un"] }
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSButton", "NSControl", "NSResponder", "NSView", "NSStatusItem", "NSStatusBarButton"] }
+objc2-service-management = { version = "0.3.2", features = ["SMAppService"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "native-tls", "system-proxy", "http2"] }
+semver = "1.0.28"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tauri = { version = "2.12", features = ["tray-icon", "macos-private-api"] }
+tauri-plugin-single-instance = "2.5"
+tokio = { version = "1.54.0", features = ["time", "sync", "macros"] }
+uuid = { version = "1.28.0", features = ["v4"] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = "s"
+strip = true

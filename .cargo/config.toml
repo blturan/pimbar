@@ -1,0 +1,4 @@
+# Build into a folder Spotlight skips (it ignores anything ending in .noindex),
+# so the built pimbar.app doesn't show up next to the installed one.
+[build]
+target-dir = "target.noindex"

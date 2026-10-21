@@ -1,0 +1,38 @@
+/* Rounded, in the way of recent macOS. One corner for everything with a box
+   (cards, buttons, pills, fields, choices); the windows (the panel, dialogs)
+   a larger one; round only where the shape says what it is: the on/off
+   switch. Only shapes change; colours, sizes and layout are style.css's. To
+   go back to the square look, drop this file's <link> from index.html. */
+
+:root {
+  --radius: 8px;
+  --radius-window: 12px;
+}
+
+/* The panel and dialogs: rounded like a macOS menu, their contents clipped to them. */
+.panel, .dialog { border-radius: var(--radius-window); }
+
+/* Cards clip what's inside, so hover fills follow the corners. */
+.card, .banner { border-radius: var(--radius); }
+.card { overflow: hidden; }
+.card + .card { margin-top: 8px; }
+
+.btn, .pill, .choice, .input, .stepper { border-radius: var(--radius); }
+.stepper { overflow: hidden; }
+
+/* Two or three options in one track; the pressed one inset by 2, its corner
+   2 smaller, so the two curves run side by side. */
+.segmented { border-radius: var(--radius); padding: 2px; gap: 2px; background: var(--surface-2); }
+.segmented button { height: 22px; background: none; border-radius: calc(var(--radius) - 2px); }
+.segmented button + button { border-left: 0; }
+.segmented button[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 8%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, var(--border)); }
+
+/* The quote of someone's reason: its open side rounded. */
+.quote { border-radius: 0 var(--radius) var(--radius) 0; }
+
+/* Round by nature: the switch, and its knob. */
+.toggle { border-radius: 999px; }
+.toggle::after { border-radius: 50%; }
+
+/* Focus rings follow the corners (outline does, with a little offset). */
+:focus-visible { outline-offset: 2px; }

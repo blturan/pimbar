@@ -1,0 +1,283 @@
+/* pimbar's look: light and dark tokens, square corners (rounded.css rounds
+   them), flat bordered controls, uppercase muted section titles. */
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#f6f7f9, #0e1014);
+  --surface: light-dark(#ffffff, #161a21);
+  --surface-2: light-dark(#f1f3f6, #1c212a);
+  --border: light-dark(#e3e6eb, #262c36);
+  --text: light-dark(#161a21, #e6e9ef);
+  --muted: light-dark(#667085, #8b94a5);
+  --accent: light-dark(#1d6fe0, #5aa2ff);
+  --pass: light-dark(#12a150, #3ccf7c);
+  --warn: light-dark(#c98a00, #f5b82e);
+  --fail: light-dark(#d92d20, #ff6b5e);
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --focus: color-mix(in srgb, var(--accent) 55%, transparent);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Pills, small buttons and the ✕ and ✓ on cards: one height, so they line up. */
+  --small: 22px;
+}
+/* Settings → Appearance can pin light or dark; otherwise light-dark() follows macOS. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* macOS's "Increase contrast": firmer borders and greys. */
+@media (prefers-contrast: more) {
+  :root {
+    --border: light-dark(#b9bfc9, #46505f);
+    --muted: light-dark(#4b5565, #b0b8c6);
+  }
+}
+
+.tone-pass { --tone: var(--pass); }
+.tone-warn { --tone: var(--warn); }
+.tone-fail { --tone: var(--fail); }
+.tone-accent { --tone: var(--accent); }
+.tone-never { --tone: var(--muted); }
+
+* { box-sizing: border-box; border-radius: 0; }
+/* The window is see-through; .panel is what shows. */
+html { background: transparent; }
+html, body { height: 100%; }
+body {
+  margin: 0; overflow: hidden; color: var(--text);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased; user-select: none; cursor: default;
+}
+/* The panel fills the window; it, not the body, carries the background, so the
+   body stays see-through (a body's background would paint the whole window). */
+.panel {
+  position: relative; height: 100%; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg); border: 1px solid var(--border);
+}
+button, input, textarea { font: inherit; color: inherit; }
+/* Hidden means hidden, whatever display a class sets. */
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.muted { color: var(--muted); font-size: 12px; }
+.spacer { flex: 1; }
+
+/* Header, search and footer stay put; the middle scrolls. */
+/* The search field with refresh beside it; Settings swaps in its own bar here. */
+.search { display: flex; align-items: center; gap: 6px; padding: 10px 10px 10px 12px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.search .input { flex: 1; }
+.search .btn.icon { height: 32px; width: 32px; }
+.page { margin: 0; font-size: 13.5px; font-weight: 650; }
+.btn.icon.on { color: var(--accent); }
+/* An update waiting: a small blue dot on the gear. */
+.btn.icon.dot { position: relative; }
+.btn.icon.dot::after {
+  content: ""; position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--surface);
+}
+/* The gear's many corners make its outline look heavier: a lighter line evens it out. */
+.btn.icon svg.gear { stroke-width: 1.35; }
+main { flex: 1; overflow-y: auto; padding: 4px 12px 16px; }
+.foot { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; background: var(--surface); border-top: 1px solid var(--border); }
+.foot .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0;
+  height: 28px; padding: 0 14px; border: 1px solid var(--border); background: var(--surface);
+  cursor: pointer; font-weight: 600; font-size: 12.5px; white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.btn:hover:not(:disabled) { background: var(--surface-2); border-color: color-mix(in srgb, var(--muted) 45%, var(--border)); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn.small { height: var(--small); padding: 0 10px; font-size: 12px; }
+.btn.icon { width: 28px; height: 28px; padding: 0; color: var(--muted); }
+.btn.icon:hover:not(:disabled) { color: var(--text); }
+.btn.icon svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.btn.icon.busy svg { animation: spin 0.8s linear infinite; color: var(--accent); }
+/* A quieter button for long lists (Elevate, Request): its text blends in, and comes up on hover. */
+.btn.soft { color: color-mix(in srgb, var(--text) 62%, var(--muted)); }
+.btn.soft:hover:not(:disabled) { color: var(--text); }
+/* Elevate and Request down a list: one width, so they line up. */
+.role .btn.soft { min-width: 68px; }
+
+/* A button in a tone: its colour, on a tint of it. */
+.btn.toned { color: var(--tone); border-color: color-mix(in srgb, var(--tone) 45%, var(--border)); background: color-mix(in srgb, var(--tone) 8%, var(--surface)); }
+.btn.toned:hover:not(:disabled) { background: color-mix(in srgb, var(--tone) 16%, var(--surface)); border-color: var(--tone); }
+
+.input {
+  width: 100%; height: 32px; padding: 0 10px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font-size: 13px; transition: border-color 0.12s; user-select: text;
+}
+textarea.input { height: auto; min-height: 52px; padding: 7px 10px; resize: none; line-height: 1.4; }
+.input::placeholder { color: color-mix(in srgb, var(--muted) 70%, transparent); }
+.input:hover { border-color: color-mix(in srgb, var(--muted) 45%, var(--border)); }
+.input:focus { outline: 2px solid var(--focus); outline-offset: 0; border-color: var(--accent); }
+
+/* A pill on the right of a row: where something stands. Tinted in its tone,
+   the same as the row's mark; grey without one, for plain facts (time left). */
+.pill {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; flex-shrink: 0;
+  height: var(--small); padding: 0 9px; font-size: 12px; font-weight: 600; white-space: nowrap;
+  font-variant-numeric: tabular-nums; cursor: default;
+  color: var(--tone, var(--muted)); background: color-mix(in srgb, var(--tone, var(--muted)) 13%, transparent);
+}
+/* A mark in a pill (✓ 1 on a subscription): the task marks' ✓, small. */
+.pill svg { width: 11px; height: 11px; margin-right: -1px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+.section { margin-top: 14px; }
+.title { display: flex; align-items: baseline; gap: 6px; margin: 0 0 6px; font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+
+.card { background: var(--surface); border: 1px solid var(--border); }
+.card + .card { margin-top: 6px; }
+.row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; min-width: 0; }
+.row + .row, .row + .form, .form + .row { border-top: 1px solid var(--border); }
+.grow { flex: 1; min-width: 0; }
+.name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A tone stripe on the left. */
+.card.toned { border-left: 3px solid var(--tone); }
+
+/* A subscription: a header row that opens to its roles. */
+.group > summary { list-style: none; cursor: pointer; }
+.group > summary::-webkit-details-marker { display: none; }
+.group > summary:hover { background: var(--surface-2); }
+.chev { width: 10px; height: 10px; flex-shrink: 0; fill: none; stroke: var(--muted); stroke-width: 1.8; transition: transform 0.12s var(--ease); }
+.group[open] .chev { transform: rotate(90deg); }
+.group[open] > summary { border-bottom: 1px solid var(--border); }
+/* Under the list: how many subscriptions are hidden. */
+.list-note { margin: 8px 0 0; text-align: center; font-size: 12px; color: var(--muted); }
+.list-note a { color: inherit; }
+.list-note a:hover { color: var(--text); }
+.role { padding-left: 28px; }
+/* A role's mark (✓, dot, spinner) under its subscription's arrow; its name stays where it is. */
+.role > .phase { width: 14px; height: 14px; margin: 0 -2px 0 -20px; }
+.role > .phase svg { width: 14px; height: 14px; }
+.role > .phase .spin { width: 11px; height: 11px; }
+/* Role names under a subscription: a touch smaller and softer than the subscription itself. */
+/* A narrower scope's name, under its kind: a touch brighter than the label. */
+.role .scope-name { color: color-mix(in srgb, var(--text) 70%, var(--muted)); }
+.role .name { font-size: 12.5px; font-weight: 550; color: color-mix(in srgb, var(--text) 82%, var(--muted)); }
+
+/* Inline forms: activation and review. */
+.form { display: grid; gap: 8px; padding: 10px; background: var(--surface-2); }
+.role + .form { padding-left: 28px; }
+.label { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.choices { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.choice { height: 28px; padding: 0; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-weight: 600; font-size: 12.5px; transition: border-color 0.12s, background 0.12s; }
+/* Two options side by side: one pressed. */
+.segmented { flex: 1; display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--border); }
+.segmented.three { grid-template-columns: repeat(3, 1fr); }
+.segmented button {
+  height: 28px; border: 0; background: var(--surface); color: var(--muted); cursor: pointer;
+  font-size: 12.5px; font-weight: 600; transition: background 0.12s, color 0.12s;
+}
+.segmented button + button { border-left: 1px solid var(--border); }
+.segmented button:hover { color: var(--text); background: var(--surface-2); }
+.segmented button[aria-pressed="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, var(--border)); }
+
+/* Minutes: − [15 min] +, one flat box, the row's height. */
+.stepper { display: inline-flex; height: 28px; border: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+.stepper:focus-within { outline: 2px solid var(--focus); outline-offset: 0; border-color: var(--accent); }
+.step {
+  width: 28px; border: 0; background: none; color: var(--muted); cursor: pointer;
+  font-size: 15px; line-height: 1; transition: background 0.12s, color 0.12s;
+}
+.step:first-child { border-right: 1px solid var(--border); }
+.step:last-child { border-left: 1px solid var(--border); }
+.step:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.step:disabled { opacity: 0.35; cursor: default; }
+.step-value {
+  width: 34px; border: 0; padding: 0 3px 0 0; background: none; outline: none;
+  text-align: right; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; user-select: text;
+}
+.step-unit { display: flex; align-items: center; padding-right: 9px; color: var(--muted); font-size: 12px; }
+.choice:hover { border-color: color-mix(in srgb, var(--muted) 45%, var(--border)); }
+/* Pressed, like a blue button: its text, edge and a tint of its fill. */
+.choice[aria-pressed="true"] { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.actions { display: flex; gap: 6px; justify-content: flex-end; }
+.quote { margin: 0; padding: 6px 10px; border-left: 2px solid var(--border); color: var(--text); font-size: 12.5px; overflow-wrap: anywhere; user-select: text; }
+.facts { display: grid; grid-template-columns: 64px 1fr; gap: 2px 10px; margin: 0; font-size: 12px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+
+.banner {
+  margin-top: 10px; padding: 8px 12px; font-size: 12.5px; overflow-wrap: anywhere; user-select: text;
+  border: 1px solid color-mix(in srgb, var(--tone) 40%, var(--border));
+  background: color-mix(in srgb, var(--tone) 8%, var(--surface));
+  animation: rise 0.18s var(--ease);
+}
+.banner a { color: inherit; font-weight: 600; }
+.empty { color: var(--muted); text-align: center; padding: 28px 0; margin: 0; }
+/* Starting up: the spinner, and what it's doing. */
+.loading { padding-top: 40px; text-align: center; }
+.loading p { margin: 12px 0 0; }
+/* A short line under a settings row, e.g. after a test notification. */
+.via { font-weight: 400; }
+.note { padding: 0 10px 10px; font-size: 12px; color: var(--tone); animation: rise 0.18s var(--ease); }
+.spinner { display: block; margin: 0 auto; width: 22px; height: 22px; border: 2.5px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; }
+
+/* First run: one question, answered once. */
+.prompt { margin-top: 10px; animation: rise 0.18s var(--ease); }
+.actions.pad { padding: 0 10px 10px; }
+
+/* Settings: rows with a flat switch. */
+label.row { cursor: pointer; }
+.toggle {
+  appearance: none; position: relative; flex-shrink: 0; margin: 0; width: 30px; height: 18px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface-2); transition: background 0.15s, border-color 0.15s;
+}
+.toggle::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px;
+  background: var(--muted); transition: transform 0.15s var(--ease), background 0.15s;
+}
+.toggle:checked { background: var(--accent); border-color: var(--accent); }
+.toggle:checked::after { transform: translateX(12px); background: #fff; }
+.toggle:disabled { opacity: 0.5; cursor: not-allowed; }
+.foot-buttons { display: inline-flex; align-items: center; gap: 4px; }
+/* A question over the whole panel. */
+.scrim {
+  position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; padding: 24px;
+  background: rgb(0 0 0 / 0.36); animation: fade 0.14s var(--ease);
+}
+.dialog {
+  width: 100%; padding: 18px 18px 14px; background: var(--surface); border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.2); animation: rise 0.18s var(--ease);
+}
+.dialog h2 { margin: 0 0 6px; font-size: 14px; font-weight: 650; }
+.dialog p { margin: 0 0 16px; color: var(--muted); font-size: 12.5px; }
+@keyframes fade { from { opacity: 0; } }
+
+/* A task is always three lines (role; kind and place; details), so every row
+   is the same height; anything cut short shows on hover. */
+/* A card with a mark on the left: mark, text and whatever's on the right all centred on one another. */
+.task { align-items: center; gap: 10px; }
+.lines .line:first-child { min-height: 18px; }
+/* Waiting on someone or something: an amber dot. */
+.phase .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+/* Two lines: the name with when, the tag (and ✕) in the corner; the details below. */
+.lines .line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lines .line > :first-child { flex: 1; min-width: 0; }
+.lines .line > :not(:first-child) { flex-shrink: 0; }
+.lines .line + .sub { margin-top: 3px; }
+/* An event in a role's history: two lines, when and what, indented under the role. */
+.session { padding-left: 28px; align-items: center; }
+.session .lines > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session .detail { font-size: 12px; color: var(--muted); }
+/* The ✕ and ✓ on a card: as tall as the pill beside them. */
+.task .dismiss { width: var(--small); height: var(--small); }
+.task .dismiss svg { width: 12px; height: 12px; }
+.slot { width: var(--small); flex-shrink: 0; }
+
+/* Tasks: a coloured mark for where each stands. */
+.phase { display: inline-flex; width: 16px; height: 16px; flex-shrink: 0; align-items: center; justify-content: center; color: var(--tone); }
+.phase svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.phase .spin { width: 13px; height: 13px; border-width: 2px; }
+.sub.wrap { white-space: normal; overflow-wrap: anywhere; user-select: text; }
+.spin {
+  display: inline-block; width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%;
+  border: 1.5px solid currentColor; border-right-color: transparent;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

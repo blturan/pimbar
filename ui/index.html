@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pimbar</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="rounded.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <div class="panel">
+      <div class="search" id="search-bar">
+        <input id="query" class="input" type="search" placeholder="Search roles or subscriptions…" autocomplete="off" spellcheck="false" />
+        <button id="refresh" class="btn icon" title="Refresh (⌘R)" aria-label="Refresh">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.6 6.4A5.8 5.8 0 1 0 13.8 9" /><path d="M14 2.5v4h-4" /></svg>
+        </button>
+      </div>
+      <div class="search" id="page-head" hidden>
+        <button id="back" class="btn icon" title="Back (Esc)" aria-label="Back">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>
+        </button>
+        <h1 class="page" id="page-title"></h1>
+        <span class="spacer"></span>
+        <button id="clear-history" class="btn small" hidden>Clear</button>
+      </div>
+      <main id="content"></main>
+      <footer class="foot">
+        <span id="status" class="muted"></span>
+        <span class="spacer"></span>
+        <span class="foot-buttons">
+        <button id="history" class="btn icon" title="History" aria-label="History">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.4 6.4A5.8 5.8 0 1 1 2.2 9" /><path d="M2 2.5v4h4" /><path d="M8 6.2V8.2l1.5 0.9" /></svg>
+        </button>
+        <button id="settings" class="btn icon" title="Settings" aria-label="Settings">
+          <svg class="gear" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M6.81 3.56 7.16 2.06 8.84 2.06 9.19 3.56 10.30 4.02 11.61 3.21 12.79 4.39 11.98 5.70 12.44 6.81 13.94 7.16 13.94 8.84 12.44 9.19 11.98 10.30 12.79 11.61 11.61 12.79 10.30 11.98 9.19 12.44 8.84 13.94 7.16 13.94 6.81 12.44 5.70 11.98 4.39 12.79 3.21 11.61 4.02 10.30 3.56 9.19 2.06 8.84 2.06 7.16 3.56 6.81 4.02 5.70 3.21 4.39 4.39 3.21 5.70 4.02z" />
+            <circle cx="8" cy="8" r="1.9" />
+          </svg>
+        </button>
+        <button id="quit" class="btn icon" title="Quit pimbar" aria-label="Quit pimbar">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.8 3.8 12.2 12.2M12.2 3.8 3.8 12.2" /></svg>
+        </button>
+        </span>
+      </footer>
+      <div class="scrim" id="quit-dialog" hidden>
+        <div class="dialog" role="alertdialog" aria-labelledby="quit-title" aria-describedby="quit-text">
+          <h2 id="quit-title">Quit pimbar?</h2>
+          <p id="quit-text">You won't hear about approvals, or see your roles in the menu bar, until you open it again.</p>
+          <div class="actions">
+            <button id="quit-cancel" class="btn">Cancel</button>
+            <button id="quit-yes" class="btn toned tone-accent">Quit</button>
+          </div>
+        </div>
+      </div>
+      <div class="scrim" id="confirm-dialog" hidden>
+        <div class="dialog" role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+          <h2 id="confirm-title"></h2>
+          <p id="confirm-text"></p>
+          <div class="actions">
+            <button id="confirm-keep" class="btn">Keep</button>
+            <button id="confirm-yes" class="btn toned tone-fail"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
