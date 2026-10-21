@@ -42,6 +42,7 @@ jobs:
     name: Build and publish
     needs: validate
     runs-on: macos-latest
+    environment: release
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -54,9 +55,11 @@ jobs:
         env:
           CI: "false"
           GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: npx --yes @tauri-apps/cli@2.12.4
-          args: --bundles dmg
+          args: --bundles app,dmg --config tauri.release.conf.json
           tagName: ${{ github.ref_name }}
           releaseName: pimbar __VERSION__
           generateReleaseNotes: true

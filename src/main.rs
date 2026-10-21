@@ -52,6 +52,7 @@ fn main() {
     tauri::Builder::default()
         // Two copies would poll and notify twice.
         .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(shared.clone())
         .invoke_handler(tauri::generate_handler![
             commands::snapshot,

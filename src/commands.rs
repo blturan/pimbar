@@ -317,16 +317,20 @@ pub async fn install_update(app: AppHandle, ctx: Ctx<'_>) -> Result<(), String> 
     let release = ctx.release.lock().unwrap().clone().ok_or("Check for updates first.")?;
     ctx.snap.lock().unwrap().update.updating = true;
     publish(&app, ctx.inner());
-    let started = if update::via_homebrew() {
+    let homebrew = update::via_homebrew();
+    let started = if homebrew {
         update::upgrade_with_homebrew()
     } else {
-        update::update_self(&ctx.http, &release).await
+        update::update_self(&release).await
     };
     match started {
-        Ok(()) => {
+        // Homebrew swaps the app once pimbar has quit, and opens it again; the
+        // updater has already swapped it, so pimbar restarts into the new one.
+        Ok(()) if homebrew => {
             app.exit(0);
             Ok(())
         }
+        Ok(()) => app.restart(),
         Err(e) => {
             {
                 let mut snap = ctx.snap.lock().unwrap();

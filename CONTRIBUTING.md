@@ -43,9 +43,11 @@ pimbar is a [Tauri](https://tauri.app) app: Rust behind, a plain HTML/JS panel
   for requests, approvals and active roles, and the larger eligible-role list
   every 15 minutes, about 1% of what Azure allows one user. Both can be changed
   in Settings, or set to manual. While a task runs it checks every few seconds.
-- **Updates:** once a day it asks GitHub for the latest release. It updates
-  through Homebrew if Homebrew installed it; otherwise it downloads the .dmg,
-  checks it against GitHub's SHA-256 digest and replaces itself.
+- **Updates:** once a day it reads `latest.json` from the latest GitHub
+  release with Tauri's updater (a download, not GitHub's API, whose 60 calls an
+  hour per IP a shared network uses up). It updates through Homebrew if
+  Homebrew installed it; otherwise the updater installs the update, but only
+  if it's signed with the release key.
 - **Data:** settings, task history and a cache of role policies live in
   `~/Library/Application Support/dev.pimbar.desktop/`.
 

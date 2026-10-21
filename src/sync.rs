@@ -214,7 +214,7 @@ pub fn check_update(app: &AppHandle, shared: &Arc<Shared>, force: bool) {
     }
     let (app, shared) = (app.clone(), Arc::clone(shared));
     tauri::async_runtime::spawn(async move {
-        let result = update::latest(&shared.http).await;
+        let result = update::latest(&app).await;
         let current = app.package_info().version.to_string();
         let mut announce = None;
         {
@@ -223,18 +223,18 @@ pub fn check_update(app: &AppHandle, shared: &Arc<Shared>, force: bool) {
             u.checked_at = Some(Utc::now());
             u.via = if update::via_homebrew() { "homebrew" } else { "self" }.into();
             match result {
-                // No release yet: nothing to update to, and nothing wrong.
+                // Up to date, or no release with an update in it yet.
                 Ok(None) => {
                     u.available = false;
+                    u.latest = Some(current);
                     u.error = None;
+                    *shared.release.lock().unwrap() = None;
                 }
                 Ok(Some(release)) => {
-                    u.available = update::newer(&release.version, &current);
+                    u.available = true;
                     u.latest = Some(release.version.clone());
                     u.error = None;
-                    if u.available {
-                        announce = Some(release.version.clone());
-                    }
+                    announce = Some(release.version.clone());
                     *shared.release.lock().unwrap() = Some(release);
                 }
                 Err(e) => u.error = Some(e.to_string()),
