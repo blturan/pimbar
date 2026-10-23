@@ -18,6 +18,8 @@
 .card + .card { margin-top: 8px; }
 
 .btn, .pill, .choice, .input, .stepper { border-radius: var(--radius); }
+/* The small status pill: a smaller corner for its size. */
+.pill.mini { border-radius: 5px; }
 .stepper { overflow: hidden; }
 
 /* Two or three options in one track; the pressed one inset by 2, its corner

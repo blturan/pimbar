@@ -123,6 +123,9 @@ textarea.input { height: auto; min-height: 52px; padding: 7px 10px; resize: none
 
 .section { margin-top: 14px; }
 .title { display: flex; align-items: baseline; gap: 6px; margin: 0 0 6px; font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+/* A quiet button at the right of a section title (Tasks: Clear), in the title's own letters. */
+.title-link { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; }
+.title-link:hover { color: var(--text); }
 
 .card { background: var(--surface); border: 1px solid var(--border); }
 .card + .card { margin-top: 6px; }
@@ -266,6 +269,13 @@ label.row { cursor: pointer; }
 .task .dismiss { width: var(--small); height: var(--small); }
 .task .dismiss svg { width: 12px; height: 12px; }
 .slot { width: var(--small); flex-shrink: 0; }
+/* A task on one line: the role, then where, quieter and cut short when it doesn't fit; then
+   where it stands, in a small pill. */
+.task.single { padding-top: 7px; padding-bottom: 7px; }
+.one-line { display: flex; align-items: baseline; gap: 6px; flex: 1; min-width: 0; }
+.one-line .name { flex-shrink: 0; max-width: 60%; }
+.one-line .where { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.pill.mini { height: 16px; padding: 0 6px; font-size: 10.5px; font-weight: 650; }
 
 /* Tasks: a coloured mark for where each stands. */
 .phase { display: inline-flex; width: 16px; height: 16px; flex-shrink: 0; align-items: center; justify-content: center; color: var(--tone); }

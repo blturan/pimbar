@@ -63,6 +63,7 @@ fn main() {
             commands::cancel_request,
             commands::review,
             commands::dismiss,
+            commands::dismiss_finished,
             commands::set_login,
             commands::skip_login,
             commands::set_appearance,

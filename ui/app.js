@@ -203,11 +203,12 @@ function active() {
         pill("warn", `Stops ${t.until ? clock(t.until) : "soon"}`, "PIM won't stop a role in its first 5 minutes after activating"),
         h("button", { class: "btn small", title: "Cancel the stop: the role stays active", onclick: () => run("cancel", { id: t.id }) }, "Undo")]]
       : t
-        ? ["running", where, [pill("accent", "Stopping"), slot()]]
+        ? ["running", null, miniPill("accent", "Stopping")]
         : ["done", where, [pill(soon ? "warn" : null, left(a.end), a.end ? `Until ${clock(a.end)}` : null), stopButton(a, where)]];
-    return h("div", { class: "card" }, h("div", { class: `row task tone-${PHASES[phase].tone}` },
+    // Stopping: one line, like a task.
+    return h("div", { class: "card" }, h("div", { class: `row task tone-${PHASES[phase].tone}${sub ? "" : " single"}` },
       mark(phase),
-      h("div", { class: "grow" }, h("div", { class: "name" }, a.role), h("div", { class: "sub" }, sub)),
+      sub ? h("div", { class: "grow" }, h("div", { class: "name" }, a.role), h("div", { class: "sub" }, sub)) : oneLine(a.role, where),
       right));
   }));
 }
@@ -521,6 +522,8 @@ const outcome = (t) => {
   const [tone, text] = status(t);
   return pill(isOpen(t) || tone === "fail" ? tone : null, text);
 };
+/** A small pill at the start of a card's second line: where it stands, in its tone. */
+const miniPill = (tone, text) => h("span", { class: `pill mini tone-${tone}` }, text);
 
 /** Line two: what kind of task, and where. */
 function kindLine(t) {
@@ -570,18 +573,30 @@ function twoLines(name, pillEl, sub, time, end = null) {
     h("div", { class: "sub" }, sub));
 }
 
-/** One task, two lines: the role and how it ended; the details and when. The
- *  rest (what kind, the reason you gave) is in the tooltip. A finished one in
- *  the Tasks list (`dismissable`) gets an ✕ to clear it now; a request waiting
- *  for an approver, Cancel. */
-function taskRow(t, time, dismissable = false) {
+/** A role and where, on one line: the place quieter, cut short when it doesn't fit. */
+const oneLine = (name, where) => h("div", { class: "one-line" }, h("span", { class: "name" }, name), h("span", { class: "where" }, where));
+
+/** One task, one line: the role, where, and where it stands (a small pill).
+ *  When, and the details (what kind, the reason you gave, PIM's message), are
+ *  in the tooltip. A finished one gets an ✕ to clear it now; a request waiting
+ *  for an approver, Cancel; a running one, nothing. */
+function taskRow(t) {
+  const [tone, text] = status(t);
+  const pending = t.kind === "activate" && t.phase === "waiting" && t.request_id;
+  return h("div", { class: `row task single tone-${tone}`, title: [t.role, kindLine(t), detailLine(t), ago(t.finished ?? t.started)].join("\n") },
+    mark(t.phase),
+    oneLine(t.role, t.scope_name),
+    miniPill(tone, text),
+    pending ? cancelButton(t.request_id, t.role, t.scope_name)
+      : !isOpen(t) && xButton("Clear", () => invoke("dismiss", { id: t.id })));
+}
+
+/** A review in the history, two lines: whose request and how you decided; the details and when. */
+function reviewRow(t, time) {
   const [tone] = status(t);
-  const pending = dismissable && t.kind === "activate" && t.phase === "waiting" && t.request_id;
   return h("div", { class: `row task tone-${tone}`, title: [t.role, kindLine(t), detailLine(t)].join("\n") },
     mark(t.phase),
-    twoLines(t.role, outcome(t), shortLine(t), time,
-      pending ? cancelButton(t.request_id, t.role, t.scope_name)
-        : dismissable && (isOpen(t) ? slot() : xButton("Clear", () => invoke("dismiss", { id: t.id })))));
+    twoLines(t.role, outcome(t), shortLine(t), time));
 }
 
 /** Activations, deactivations and reviews: running, waiting on an approver, or
@@ -591,8 +606,12 @@ function taskList() {
   const tasks = snap.tasks.filter((t) => !(t.phase === "waiting" && t.kind === "deactivate"));
   if (!tasks.length) return null;
   const busy = tasks.filter(isOpen).length;
-  return section("Tasks", busy || null,
-    tasks.map((t) => h("div", { class: "card" }, taskRow(t, ago(t.finished ?? t.started), true))));
+  // Two or more finished: Clear, in the title, clears them at once (into the history, like their ✕s).
+  const finished = tasks.length - busy;
+  return h("section", { class: "section" },
+    h("h2", { class: "title" }, "Tasks", busy > 0 && h("span", {}, `· ${busy}`),
+      finished > 1 && h("button", { class: "title-link", title: "Clear finished tasks", onclick: () => invoke("dismiss_finished") }, "Clear")),
+    tasks.map((t) => h("div", { class: "card" }, taskRow(t))));
 }
 
 /** Hiding, by `kind`: a `subscription` (its id) or a `role` (`roleKey`). */
@@ -773,7 +792,7 @@ function historyPage() {
   return [
     section("Your roles", null, cards),
     reviews.length && section("Your reviews", null,
-      reviews.map((t) => h("div", { class: "card" }, taskRow(t, when(t.finished ?? t.started))))),
+      reviews.map((t) => h("div", { class: "card" }, reviewRow(t, when(t.finished ?? t.started))))),
   ].filter(Boolean);
 }
 

@@ -475,6 +475,22 @@ pub fn dismiss(app: AppHandle, ctx: Ctx, id: u64) {
     publish(&app, ctx.inner());
 }
 
+/// Clears every finished task from the list at once, as their ✕s do one by one.
+#[tauri::command]
+pub fn dismiss_finished(app: AppHandle, ctx: Ctx) {
+    {
+        let mut guard = ctx.snap.lock().unwrap();
+        let snap = &mut *guard;
+        if tasks::record(&mut snap.tasks, &mut snap.history)
+            && let Some(path) = ctx.history.get()
+        {
+            tasks::save_history(path, &snap.history);
+        }
+        snap.tasks.retain(Task::open);
+    }
+    publish(&app, ctx.inner());
+}
+
 #[tauri::command]
 pub fn clear_history(app: AppHandle, ctx: Ctx) {
     ctx.snap.lock().unwrap().history.clear();
