@@ -126,14 +126,15 @@ impl Task {
         self.phase == Phase::Failed && self.message.starts_with("Cancelled")
     }
 
-    pub fn title(&self) -> String {
+    /// The notification's title when sending it failed: "Couldn't activate Reader".
+    pub fn failed_title(&self) -> String {
         let verb = match self.kind {
-            Kind::Activate => "Activate",
-            Kind::Deactivate => "Stop",
-            Kind::Approve => "Approve",
-            Kind::Deny => "Deny",
+            Kind::Activate => "activate",
+            Kind::Deactivate => "stop",
+            Kind::Approve => "approve",
+            Kind::Deny => "deny",
         };
-        format!("{verb} {}", self.role)
+        format!("Couldn't {verb} {}", self.role)
     }
 }
 

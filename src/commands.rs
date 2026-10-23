@@ -75,7 +75,7 @@ where
                 }
                 Err(e) => {
                     t.finish(Phase::Failed, e.clone());
-                    Some((format!("{} failed", t.title()), e))
+                    Some((t.failed_title(), e))
                 }
             }
         };
@@ -502,7 +502,7 @@ pub fn clear_history(app: AppHandle, ctx: Ctx) {
 
 #[tauri::command]
 pub fn test_notification(app: AppHandle) {
-    notify(&app, "pimbar notifications work", "You'll see one like this when someone asks for your approval.");
+    notify(&app, "Notifications are on", "This is how approval requests will look");
 }
 
 #[tauri::command]

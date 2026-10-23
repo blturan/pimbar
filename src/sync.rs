@@ -22,7 +22,6 @@ const POLL_BUSY: Duration = Duration::from_secs(4);
 pub async fn poll(app: AppHandle, shared: Arc<Shared>) {
     let mut last_full: Option<Instant> = None;
     let mut seen_reviews: Option<HashSet<String>> = None;
-    let mut warned_expiry: HashSet<String> = HashSet::new();
 
     loop {
         let full = shared.want_full.swap(false, Relaxed) || last_full.is_none_or(|t| t.elapsed() >= Duration::from_secs(shared.roles_seconds.load(Relaxed)));
@@ -49,26 +48,20 @@ pub async fn poll(app: AppHandle, shared: Arc<Shared>) {
         match &seen_reviews {
             Some(seen) => {
                 for r in snap.to_review.iter().filter(|r| !seen.contains(&r.id)) {
-                    notify(&app, "PIM approval needed", &format!("{} wants {} on {}", r.requester, r.role, r.scope_name));
+                    // The name without the address: "Sam Lee <sam@contoso.com>" → "Sam Lee".
+                    let who = r.requester.split(" <").next().unwrap_or_default();
+                    notify(&app, "Approval needed", &format!("{who} wants {} on {}", r.role, r.scope_name));
                 }
             }
             None if !snap.to_review.is_empty() => {
                 let n = snap.to_review.len();
-                notify(&app, "PIM approvals waiting", &format!("{n} request{} waiting for your approval", if n == 1 { " is" } else { "s are" }));
+                notify(&app, "Approvals waiting", &if n == 1 { "1 request needs your approval".into() } else { format!("{n} requests need your approval") });
             }
             None => {}
         }
         if ok {
             seen_reviews = Some(ids);
         }
-
-        for a in &snap.active {
-            let soon = a.end.is_some_and(|end| (end - Utc::now()).num_minutes() <= 10);
-            if soon && warned_expiry.insert(a.id.clone()) {
-                notify(&app, "PIM role expiring", &format!("{} on {} ends in under 10 minutes", a.role, a.scope_name));
-            }
-        }
-        warned_expiry.retain(|id| snap.active.iter().any(|a| a.id == *id));
 
         publish(&app, &shared);
         // A running task is followed closely; otherwise the set interval, or in
@@ -186,14 +179,23 @@ pub async fn load(shared: &Shared, full: bool) -> (bool, Vec<(String, String)>) 
         let mut snap = shared.snap.lock().unwrap();
         let Some(t) = snap.tasks.iter_mut().find(|t| t.id == id) else { continue };
         // Requesters may not read the approval ("doesn't allow Self-Approval"): then the panel says where the reason is.
-        if let Some(d) = decision.filter(|d| !d.by.is_empty()) {
+        let by = decision.filter(|d| !d.by.is_empty()).map(|d| {
             t.message = format!("{} by {}", t.message, d.by);
             if !d.justification.is_empty() {
                 t.message = format!("{}: {}", t.message, d.justification);
             }
-        }
-        let title = if t.phase == Phase::Done { "PIM request approved" } else { "PIM request not approved" };
-        notes.push((title.to_owned(), format!("{} on {}: {}", t.role, t.scope_name, t.message)));
+            d.by
+        });
+        // Short: what happened, then the role and where (and who, when PIM says); the reason is in the panel.
+        let what = format!("{} on {}", t.role, t.scope_name);
+        let (title, body) = if t.phase == Phase::Done {
+            ("Request approved", by.map_or(what.clone(), |by| format!("{what}, by {by}")))
+        } else if t.message.starts_with("Expired") {
+            ("Request expired", format!("{what}, nobody approved it in time"))
+        } else {
+            ("Request denied", by.map_or(what.clone(), |by| format!("{what}, by {by}")))
+        };
+        notes.push((title.to_owned(), body));
     }
     (true, notes)
 }
@@ -255,7 +257,7 @@ pub fn check_update(app: &AppHandle, shared: &Arc<Shared>, force: bool) {
                 new
             });
             if new {
-                notify(&app, "pimbar update", &format!("pimbar {version} is available: update it in Settings"));
+                notify(&app, "Update available", &format!("pimbar {version} is ready to install in Settings"));
             }
         }
         shared.checking_update.store(false, Relaxed);

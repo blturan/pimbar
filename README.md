@@ -24,8 +24,7 @@
   right there.
 - **See what's active** and how long it has left, at a glance in the menu bar,
   and stop a role when you're done.
-- **Get notified** about new requests, decisions on yours, and roles about to
-  expire.
+- **Get notified** about new requests, and decisions on yours.
 - **Hide what you never use**: click a subscription or role with two fingers.
 - **History** of your activations, stops and reviews.
 
