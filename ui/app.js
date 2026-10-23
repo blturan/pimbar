@@ -927,7 +927,10 @@ $("content").addEventListener("focusout", () => setTimeout(() => ui.stale && ren
 // A mouse button released outside the panel, or the panel losing focus, counts as
 // up too, so the redraws never stay held back.
 const released = () => { pressing = false; setTimeout(() => ui.stale && render()); };
-document.addEventListener("pointerdown", () => { pressing = true; }, true);
+// Only the main button: a two-finger click opens a menu that keeps its release
+// from the page, and would hold the redraws back until the next click.
+document.addEventListener("pointerdown", (e) => { if (e.button === 0) pressing = true; }, true);
+document.addEventListener("contextmenu", released, true);
 document.addEventListener("pointerup", released, true);
 document.addEventListener("pointercancel", released, true);
 window.addEventListener("blur", released);
