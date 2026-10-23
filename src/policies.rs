@@ -6,14 +6,16 @@ use chrono::Utc;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
 use tauri::AppHandle;
-use crate::pim::{Eligible, Pim, Policy};
+use crate::pim::{self, Eligible, Pim, Policy};
 use crate::view::publish;
 use std::collections::HashMap;
 
 /// Role policies hardly change: each is checked again after this long.
 const POLICY_TTL: chrono::Duration = chrono::Duration::hours(24);
+/// A lookup that failed (throttled, or not allowed on that scope) waits this long before the next try.
+const POLICY_RETRY: chrono::Duration = chrono::Duration::minutes(15);
 /// Policy lookups in flight at once.
-const POLICY_BATCH: usize = 8;
+const POLICY_BATCH: usize = 4;
 
 pub fn policy_key(scope: &str, role_def_id: &str) -> String {
     format!("{scope}|{role_def_id}")
@@ -36,15 +38,24 @@ fn apply_policies(eligible: &mut [Eligible], cache: &HashMap<String, Policy>) {
 /// Fills in each eligible role's policy (needs approval? longest activation?)
 /// from the cache, and fetches the missing and day-old ones in the background,
 /// a few at a time, colouring the panel's buttons as the answers come in.
+/// Hidden roles aren't looked up at all.
 pub fn ensure_policies(app: &AppHandle, shared: &Arc<Shared>) {
     let wanted: Vec<(String, String)> = {
         let cache = shared.policies.lock().unwrap();
+        let failed = shared.policies_failed.lock().unwrap();
         let mut snap = shared.snap.lock().unwrap();
         apply_policies(&mut snap.eligible, &cache);
+        let now = Utc::now();
         let mut wanted: Vec<_> = snap
             .eligible
             .iter()
-            .filter(|e| cache.get(&policy_key(&e.scope, &e.role_def_id)).is_none_or(|p| Utc::now() - p.fetched > POLICY_TTL))
+            .filter(|e| {
+                let key = policy_key(&e.scope, &e.role_def_id);
+                !snap.hidden.contains(&e.subscription_id)
+                    && !snap.hidden_roles.contains(&key)
+                    && cache.get(&key).is_none_or(|p| now - p.fetched > POLICY_TTL)
+                    && failed.get(&key).is_none_or(|t| now - *t > POLICY_RETRY)
+            })
             .map(|e| (e.scope.clone(), e.role_def_id.clone()))
             .collect();
         wanted.sort();
@@ -57,7 +68,7 @@ pub fn ensure_policies(app: &AppHandle, shared: &Arc<Shared>) {
     let (app, shared) = (app.clone(), Arc::clone(shared));
     tauri::async_runtime::spawn(async move {
         if let Ok(token) = shared.az.token().await {
-            for batch in wanted.chunks(POLICY_BATCH) {
+            for (i, batch) in wanted.chunks(POLICY_BATCH).enumerate() {
                 let lookups: Vec<_> = batch
                     .iter()
                     .cloned()
@@ -69,9 +80,18 @@ pub fn ensure_policies(app: &AppHandle, shared: &Arc<Shared>) {
                         })
                     })
                     .collect();
+                let mut throttled = false;
                 for lookup in lookups {
-                    if let Ok((key, Ok(policy))) = lookup.await {
-                        shared.policies.lock().unwrap().insert(key, policy);
+                    let Ok((key, policy)) = lookup.await else { continue };
+                    match policy {
+                        Ok(policy) => {
+                            shared.policies_failed.lock().unwrap().remove(&key);
+                            shared.policies.lock().unwrap().insert(key, policy);
+                        }
+                        Err(e) => {
+                            throttled |= pim::throttled(&e);
+                            shared.policies_failed.lock().unwrap().insert(key, Utc::now());
+                        }
                     }
                 }
                 {
@@ -79,6 +99,15 @@ pub fn ensure_policies(app: &AppHandle, shared: &Arc<Shared>) {
                     apply_policies(&mut shared.snap.lock().unwrap().eligible, &cache);
                 }
                 publish(&app, &shared);
+                // Azure wants us to slow down: the rest wait for a later round,
+                // rather than eat into what the panel itself needs.
+                if throttled {
+                    let mut failed = shared.policies_failed.lock().unwrap();
+                    for (scope, role) in wanted.iter().skip((i + 1) * POLICY_BATCH) {
+                        failed.insert(policy_key(scope, role), Utc::now());
+                    }
+                    break;
+                }
             }
             if let Some(path) = shared.policies_path.get() {
                 let _ = std::fs::write(path, serde_json::to_vec(&*shared.policies.lock().unwrap()).unwrap_or_default());

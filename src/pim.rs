@@ -11,6 +11,9 @@ const ARM: &str = "https://management.azure.com";
 const API: &str = "2020-10-01";
 const API_APPROVALS: &str = "2021-01-01-preview";
 const API_SUBSCRIPTIONS: &str = "2022-12-01";
+/// How often a throttled (429) request is sent again, and the longest wait between, in seconds.
+const THROTTLE_RETRIES: u32 = 2;
+const MAX_RETRY_AFTER: u64 = 10;
 
 #[derive(Clone, Serialize)]
 pub struct Eligible {
@@ -156,6 +159,11 @@ pub fn code(e: &anyhow::Error) -> &str {
     e.downcast_ref::<ArmError>().map_or("", |e| e.code.as_str())
 }
 
+/// Whether ARM is throttling us (429).
+pub fn throttled(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<ArmError>().is_some_and(|e| e.status == 429)
+}
+
 /// Whether ARM turned the token down (401), so a fresh one is worth getting.
 pub fn unauthorized(e: &anyhow::Error) -> bool {
     e.downcast_ref::<ArmError>().is_some_and(|e| e.status == 401)
@@ -189,7 +197,27 @@ impl Pim<'_> {
     }
 
     async fn send(&self, req: reqwest::RequestBuilder) -> Result<Value> {
-        let resp = req.bearer_auth(self.token).send().await.context("request to ARM failed")?;
+        let mut req = req.bearer_auth(self.token);
+        let mut tries = 0;
+        let resp = loop {
+            let retry = req.try_clone();
+            let resp = req.send().await.context("request to ARM failed")?;
+            // Throttled: ARM didn't act on it, so it's safe to send again once it says when.
+            match retry {
+                Some(again) if resp.status() == 429 && tries < THROTTLE_RETRIES => {
+                    let wait = resp
+                        .headers()
+                        .get(reqwest::header::RETRY_AFTER)
+                        .and_then(|v| v.to_str().ok()?.parse().ok())
+                        .unwrap_or(2u64 << tries)
+                        .min(MAX_RETRY_AFTER);
+                    tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+                    tries += 1;
+                    req = again;
+                }
+                _ => break resp,
+            }
+        };
         let status = resp.status();
         if !status.is_success() {
             let body: Value = resp.json().await.unwrap_or(Value::Null);

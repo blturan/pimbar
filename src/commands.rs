@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
 use tauri::{AppHandle, Manager};
 use crate::panel::closed;
+use crate::policies::ensure_policies;
 use crate::pim::Pim;
 use crate::settings::{self, Settings};
 use crate::sync::{check_update, hide_handled};
@@ -385,6 +386,10 @@ pub fn hide_item(app: &AppHandle, shared: &Arc<Shared>, kind: &str, key: &str, h
     };
     if let Some(path) = shared.settings.get() {
         Settings::edit(path, |s| if kind == "subscription" { s.hidden = list } else { s.hidden_roles = list });
+    }
+    // Hidden roles' policies aren't looked up: a role shown again may need its own.
+    if !hidden {
+        ensure_policies(app, shared);
     }
     publish(app, shared);
 }

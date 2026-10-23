@@ -80,6 +80,8 @@ pub struct Shared {
     pub policies: Mutex<HashMap<String, Policy>>,
     pub policies_path: OnceLock<PathBuf>,
     pub fetching_policies: AtomicBool,
+    /// When each policy lookup that didn't answer last failed, by `policy_key`: not tried again for a while.
+    pub policies_failed: Mutex<HashMap<String, DateTime<Utc>>>,
     /// The latest release GitHub told us about, for the Update button.
     pub release: Mutex<Option<update::Release>>,
     pub checking_update: AtomicBool,
@@ -112,6 +114,7 @@ impl Shared {
             policies: Mutex::new(HashMap::new()),
             policies_path: OnceLock::new(),
             fetching_policies: AtomicBool::new(false),
+            policies_failed: Mutex::new(HashMap::new()),
             release: Mutex::new(None),
             checking_update: AtomicBool::new(false),
             installer: OnceLock::new(),
