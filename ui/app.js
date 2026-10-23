@@ -204,7 +204,8 @@ function active() {
         ? ["waiting", where, [
           // Why it waits is in the pill's tooltip.
           pill("warn", `Stops ${t.until ? clock(t.until) : "soon"}`, "PIM won't stop a role in its first 5 minutes after activating"),
-          xButton("Cancel the stop: the role stays active", () => run("cancel", { id: t.id }))]]
+          // ↶: undo the stop, the size of the ✕s beside it.
+          iconButton("Cancel the stop: the role stays active", "M5.5 3.5 3 6 5.5 8.5M3 6h6.25a3.25 3.25 0 0 1 0 6.5H7", () => run("cancel", { id: t.id }))]]
         // Stopping: nothing to press, so its pill takes the far right, where the others have their ✕.
         : t
           ? ["running", where, pill("accent", "Stopping")]
