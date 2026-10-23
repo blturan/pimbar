@@ -86,3 +86,20 @@ git tag -s v0.2.0 -m "pimbar 0.2.0" && git push origin v0.2.0
 the release and points the Homebrew cask at it. The workflow pushes that cask
 change to the default branch, so if that branch is protected, let GitHub
 Actions push to it.
+
+### Downloads
+
+GitHub counts the downloads of each release file:
+
+```sh
+gh api repos/blturan/pimbar/releases --paginate \
+  --jq '.[] | .tag_name as $t | .assets[] | "\($t)\t\(.download_count)\t\(.name)"'
+```
+
+- **`.dmg`:** installs, by hand or with Homebrew (the cask downloads the same
+  file; Homebrew only counts installs for its own taps).
+- **`.app.tar.gz`:** updates from pimbar's Settings.
+- **`latest.json`:** update checks, not people.
+
+The counts are totals, with no dates. Insights → Traffic on GitHub shows views
+and clones, but only for the last 14 days.
