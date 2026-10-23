@@ -519,13 +519,13 @@ const DOING = { activate: "Activating", deactivate: "Stopping", approve: "Approv
 /** Where a task stands: its pill's tone and word. Its row's mark takes the same tone. */
 function status(t) {
   if (isCancelled(t)) return ["never", "Cancelled"];
-  if (t.phase === "failed") return ["fail", t.message.startsWith("Denied") ? "Denied" : "Failed"];
+  if (t.phase === "failed") return ["fail", t.message.startsWith("Denied") ? "Denied" : t.message.startsWith("Expired") ? "Expired" : "Failed"];
   if (t.phase === "running") return ["accent", t.message.startsWith("Cancelling") ? "Cancelling" : DOING[t.kind]];
   if (t.phase === "waiting") return ["warn", t.kind === "deactivate" ? "Scheduled" : "Pending"];
   switch (t.kind) {
-    case "activate": return ["pass", t.message.startsWith("Approved") ? "Approved" : "Active"];
+    case "activate": return ["pass", t.message.startsWith("Approved") ? "Approved" : "Activated"];
     // Access removed: done, but not a green "you have it".
-    case "deactivate": return ["accent", "Removed"];
+    case "deactivate": return ["accent", "Stopped"];
     case "approve": return ["pass", "Approved"];
     // Someone's request you turned down: done, quietly.
     default: return ["never", "Denied"];
@@ -618,8 +618,9 @@ function reviewRow(t, time) {
 /** Activations, deactivations and reviews: running, waiting on an approver, or
  *  finished since you last looked (they go when the panel closes). */
 function taskList() {
-  // A stop waiting out PIM's five minutes shows on its Active card instead.
-  const tasks = snap.tasks.filter((t) => !(t.phase === "waiting" && t.kind === "deactivate"));
+  // A stop under way (waiting out PIM's five minutes, or being sent and removed)
+  // shows on its Active card instead; only how it ended comes here.
+  const tasks = snap.tasks.filter((t) => !(t.kind === "deactivate" && isOpen(t)));
   if (!tasks.length) return null;
   const busy = tasks.filter(isOpen).length;
   // Anything finished: Clear all, in the title, clears it at once (into the history, like the ✕s).
@@ -739,7 +740,7 @@ function span(from, to) {
  */
 function timeline(tasks) {
   const events = [];
-  let since = null; // The activation still open, for "removed after 5 min" and "expired".
+  let since = null; // The activation still open, for "stopped after 5 min" and "expired".
   const close = () => {
     if (since?.until && new Date(since.until) <= Date.now()) {
       events.push({ at: since.until, label: "Expired", what: "Expired", detail: `After ${span(since.at, since.until)}` });
@@ -752,12 +753,12 @@ function timeline(tasks) {
       close();
       const by = t.message.match(/^Approved by (.*)$/)?.[1];
       events.push({
-        at, label: "Active", what: by ? "Approved and activated" : "Activated",
+        at, label: by ? "Approved" : "Activated", what: by ? "Approved and activated" : "Activated",
         detail: [t.until && `Until ${clock(t.until)}`, by && `By ${by}`, t.justification && `Your reason: ${t.justification}`].filter(Boolean).join(" · "),
       });
       since = { at, until: t.until };
     } else if (t.kind === "deactivate" && t.phase === "done") {
-      events.push({ at, label: "Removed", what: "Removed", detail: since ? `After ${span(since.at, at)}` : "Access removed" });
+      events.push({ at, label: "Stopped", what: "Stopped", detail: since ? `After ${span(since.at, at)}` : "Access removed" });
       since = null;
     } else {
       events.push({ at, task: t, what: { activate: "Requested", deactivate: "Stop" }[t.kind] ?? "", detail: detailLine(t) });
