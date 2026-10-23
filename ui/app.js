@@ -8,6 +8,8 @@ const HOURS = [1, 2, 4, 8];
 const $ = (id) => document.getElementById(id);
 
 let snap = null;
+/** Whether a mouse button is down: no redraws until it's up (see render). */
+let pressing = false;
 const ui = {
   query: "",
   /** Subscriptions opened by hand. */
@@ -796,7 +798,9 @@ function applyAppearance() {
 function render() {
   applyAppearance();
   // Don't redraw under someone typing a justification; catch up when they leave the field.
-  if (document.activeElement?.closest?.("#content textarea, #content .step-value") && !ui.form?.busy) {
+  // Nor mid-click: a redraw between press and release swaps the button under the
+  // pointer, and the click is lost. Catch up once the button comes up.
+  if (pressing || (document.activeElement?.closest?.("#content textarea, #content .step-value") && !ui.form?.busy)) {
     ui.stale = true;
     return;
   }
@@ -886,6 +890,13 @@ $("history").addEventListener("click", () => show(ui.view === "history" ? "main"
 $("clear-history").addEventListener("click", () => invoke("clear_history"));
 $("back").addEventListener("click", () => openSettings(false));
 $("content").addEventListener("focusout", () => setTimeout(() => ui.stale && render()));
+// A mouse button released outside the panel, or the panel losing focus, counts as
+// up too, so the redraws never stay held back.
+const released = () => { pressing = false; setTimeout(() => ui.stale && render()); };
+document.addEventListener("pointerdown", () => { pressing = true; }, true);
+document.addEventListener("pointerup", released, true);
+document.addEventListener("pointercancel", released, true);
+window.addEventListener("blur", released);
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
