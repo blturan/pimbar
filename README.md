@@ -63,8 +63,12 @@ resources. Entra ID roles and PIM for Groups aren't supported yet.
 
 ```sh
 brew tap blturan/pimbar https://github.com/blturan/pimbar
+brew trust --cask blturan/pimbar/pimbar
 brew install --cask pimbar
 ```
+
+Homebrew only loads casks from taps outside its own once you trust them, which
+is what `brew trust` does.
 
 **Or by hand:** download the `.dmg` from
 [Releases](https://github.com/blturan/pimbar/releases), open it and drag pimbar
