@@ -9,7 +9,8 @@
 //!
 //! Drawn on the pixel grid at 2x: straight edges sit on whole pixels and
 //! strokes are whole pixels wide, so nothing is smeared across two pixels.
-//! Shapes are signed distance functions, which anti-alias the curves.
+//! Shapes are signed distance functions, which anti-alias the curves. The
+//! counts are text, in the menu bar's own font (SF), drawn by Core Text.
 
 use std::f32::consts::PI;
 
@@ -17,9 +18,8 @@ use std::f32::consts::PI;
 const H: usize = 36;
 /// The centre line everything is aligned on.
 const MID: f32 = 18.0;
-/// Digits: 8 × 15 with 3px strokes centred on pixel centres, so their edges are whole pixels.
-const DIGIT_TOP: f32 = 10.5;
-const DIGIT_HALF: f32 = 1.5;
+/// The counts' font size, in pixels at 2x: 11pt, as tall as the marks beside them.
+const COUNT_SIZE: f64 = 22.0;
 
 pub struct Badge {
     /// Tasks still running (a spinner), and what's waiting on an approver (a
@@ -97,14 +97,65 @@ pub fn render(b: &Badge) -> (Vec<u8>, u32, u32) {
 fn mark(layers: &mut Vec<Layer>, x: f32, color: Rgb, width: f32, n: usize, glyph: impl Fn(P) -> f32 + 'static) -> f32 {
     let gx = x + 7.0;
     layers.push(Layer { color, alpha: 1.0, shape: Box::new(move |p| glyph((p.0 - gx, p.1))) });
-    let mut dx = gx + width + 3.0;
-    for d in n.min(99).to_string().bytes().map(|d| d - b'0') {
-        // Stems on pixel centres, so 3px strokes have whole-pixel edges.
-        let at = dx.floor() + 1.5 - if d == 1 { 2.0 } else { 0.0 };
-        layers.push(Layer { color, alpha: 1.0, shape: Box::new(move |p| digit(p, at, d)) });
-        dx += if d == 1 { 8.0 } else { 13.0 };
+    // On a whole pixel, so the text lands where Core Text drew it.
+    let at = (gx + width + 4.0).round();
+    let count = Text::new(&n.min(99).to_string());
+    let end = at + count.width as f32;
+    layers.push(Layer { color, alpha: 1.0, shape: Box::new(move |p| count.shape((p.0 - at, p.1))) });
+    end
+}
+
+/// A count in the system font (SF, semibold, with digits all one width), drawn
+/// by Core Text: how much of each pixel it covers, `width` wide and `H` high.
+struct Text {
+    width: usize,
+    cover: Vec<u8>,
+}
+
+impl Text {
+    fn new(s: &str) -> Text {
+        use objc2_app_kit::{NSFont, NSFontWeightSemibold};
+        use objc2_core_foundation::{CFAttributedString, CFDictionary, CFString, CFType, kCFBooleanTrue};
+        use objc2_core_graphics::{CGBitmapContextCreate, CGBitmapContextGetData, CGContext, CGImageAlphaInfo};
+        use objc2_core_text::{CTFont, CTLine, kCTFontAttributeName, kCTForegroundColorFromContextAttributeName};
+
+        // SAFETY: plain Core Foundation, Core Text and Core Graphics calls, with
+        // live arguments; the bitmap is ours, and read only after drawing.
+        unsafe {
+            let font = NSFont::monospacedDigitSystemFontOfSize_weight(COUNT_SIZE, NSFontWeightSemibold);
+            // NSFont and CTFont are the same object ("toll-free bridged").
+            let ct = &*(objc2::rc::Retained::as_ptr(&font).cast::<CTFont>());
+            let keys: [&CFString; 2] = [kCTFontAttributeName, kCTForegroundColorFromContextAttributeName];
+            let values: [&CFType; 2] = [ct.as_ref(), kCFBooleanTrue.expect("kCFBooleanTrue").as_ref()];
+            let attributes = CFDictionary::<CFString, CFType>::from_slices(&keys, &values);
+            let text = CFAttributedString::new(None, Some(&CFString::from_str(s)), Some(attributes.as_opaque())).expect("attributed string");
+            let line = CTLine::with_attributed_string(&text);
+            let advance = line.typographic_bounds(std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+            let width = advance.ceil() as usize + 1;
+
+            // Coverage only: an alpha-only bitmap, one byte a pixel, rows from the top.
+            let Some(context) = CGBitmapContextCreate(std::ptr::null_mut(), width, H, 8, width, None, CGImageAlphaInfo::Only.0) else {
+                return Text { width, cover: vec![0; width * H] };
+            };
+            CGContext::set_gray_fill_color(Some(&context), 1.0, 1.0);
+            // Centred on the marks' middle (Core Graphics counts from the bottom),
+            // the baseline on a whole pixel so the digits' feet are crisp.
+            let baseline = (H as f64 - MID as f64 - font.capHeight() / 2.0).round();
+            CGContext::set_text_position(Some(&context), 0.0, baseline);
+            line.draw(&context);
+            let data = CGBitmapContextGetData(Some(&context)).cast::<u8>();
+            Text { width, cover: std::slice::from_raw_parts(data, width * H).to_vec() }
+        }
     }
-    dx - 2.0
+
+    /// As a shape, for the layers: the point's pixel, as covered as Core Text left it.
+    fn shape(&self, p: P) -> f32 {
+        let (x, y) = (p.0.floor(), p.1.floor());
+        if x < 0.0 || y < 0.0 || x as usize >= self.width || y as usize >= H {
+            return 1.0;
+        }
+        0.5 - f32::from(self.cover[y as usize * self.width + x as usize]) / 255.0
+    }
 }
 
 /// The lock: a 21 × 17 body with a keyhole, and a 4px shackle on short
@@ -134,27 +185,6 @@ fn spinner(p: P, turn: f32) -> f32 {
 
 fn bang(p: P) -> f32 {
     rect(p, (0.0, 9.0), (3.0, 22.0), 1.5).min(circle(p, (1.5, 26.0), 1.8))
-}
-
-/// A rounded monoline digit in an 8 × 15 box, its left stem at `x`.
-fn digit(p: P, x: f32, d: u8) -> f32 {
-    let q = (p.0 - x, p.1 - DIGIT_TOP);
-    let deg = |a: f32| a * PI / 180.0;
-    let l = |a: P, b: P| line(q, a, b);
-    let arc = |c: P, r: f32, from: f32, to: f32| arc(q, c, r, deg(from), deg(to));
-    let dist = match d {
-        0 => arc((4.0, 4.0), 4.0, 180.0, 360.0).min(arc((4.0, 11.0), 4.0, 0.0, 180.0)).min(l((0.0, 4.0), (0.0, 11.0))).min(l((8.0, 4.0), (8.0, 11.0))),
-        1 => l((5.0, 0.0), (5.0, 15.0)).min(l((1.6, 2.8), (5.0, 0.0))),
-        2 => arc((4.0, 4.0), 4.0, 195.0, 395.0).min(l((7.28, 6.29), (0.0, 15.0))).min(l((0.0, 15.0), (8.0, 15.0))),
-        3 => arc((4.0, 3.75), 3.75, 205.0, 450.0).min(arc((4.0, 11.0), 4.0, 270.0, 515.0)),
-        4 => l((6.0, 0.0), (6.0, 15.0)).min(l((6.0, 0.0), (0.0, 11.0))).min(l((0.0, 11.0), (8.0, 11.0))),
-        5 => l((7.5, 0.0), (1.0, 0.0)).min(l((1.0, 0.0), (0.7, 7.0))).min(arc((3.9, 10.5), 4.5, 222.0, 510.0)),
-        6 => circle(q, (4.0, 11.0), 4.0).abs().min(l((6.4, 0.0), (0.4, 9.6))),
-        7 => l((0.0, 0.0), (8.0, 0.0)).min(l((8.0, 0.0), (2.6, 15.0))),
-        8 => circle(q, (4.0, 3.6), 3.6).abs().min(circle(q, (4.0, 10.9), 4.1).abs()),
-        _ => circle(q, (4.0, 4.0), 4.0).abs().min(l((7.6, 5.4), (1.6, 15.0))),
-    };
-    dist - DIGIT_HALF
 }
 
 /// Paints `color` at `alpha` over a straight-alpha pixel.
