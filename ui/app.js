@@ -598,8 +598,8 @@ const setHidden = (kind, key, hidden) => invoke("set_hidden", { kind, key, hidde
 const roleKey = (e) => `${e.scope}|${e.role_def_id}`;
 const roleHidden = (e) => snap.hidden_roles.includes(roleKey(e));
 const isHidden = (e) => snap.hidden.includes(e.subscription_id) || roleHidden(e);
-/** The two-finger-click menu: Hide Subscription or Hide Role. */
-const hideMenu = (kind, key) => (ev) => { ev.preventDefault(); ev.stopPropagation(); invoke("hide_menu", { kind, key }); };
+/** The two-finger-click menu: Pin or Unpin Subscription, and Hide Subscription or Hide Role. */
+const itemMenu = (kind, key) => (ev) => { ev.preventDefault(); ev.stopPropagation(); invoke("item_menu", { kind, key }); };
 
 function eligible() {
   const q = ui.query.trim().toLowerCase();
@@ -611,9 +611,12 @@ function eligible() {
     if (!groups.has(name)) groups.set(name, []);
     groups.get(name).push(e);
   }
-  // Subscriptions with something active first, then by name.
+  // Subscriptions with something active first, then by name; pinned ones in a section of their own.
   const sorted = [...groups].sort(([a, ra], [b, rb]) =>
     (rb.some(isActive) - ra.some(isActive)) || a.localeCompare(b));
+  const isPinned = ([, roles]) => snap.pinned.includes(roles[0].subscription_id);
+  const pinned = sorted.filter(isPinned);
+  const rest = sorted.filter((g) => !isPinned(g));
 
   // Hidden ones, quietly, under the list: how many, and where to get them back.
   const subs = new Set(snap.eligible.filter((e) => snap.hidden.includes(e.subscription_id)).map((e) => e.subscription_id)).size;
@@ -623,47 +626,58 @@ function eligible() {
     [subs && plural(subs, "subscription"), roles && plural(roles, "role")].filter(Boolean).join(" and "), " hidden · ",
     h("a", { href: "#", onclick: (e) => { e.preventDefault(); openSettings(true); ui.open.add("settings:hidden"); render(); } }, "Show in Settings"));
 
-  const total = `${shown.length} in ${new Set(shown.map((e) => e.subscription_id)).size} subscriptions`;
+  const roleCount = (groups) => groups.reduce((n, [, roles]) => n + roles.length, 0);
+  const total = `${roleCount(rest)} in ${rest.length} subscriptions`;
   if (!sorted.length) {
     const empty = q ? `Nothing matches “${ui.query}”.` : hidden ? "Everything is hidden." : "You have no eligible roles.";
-    return section("Eligible", total, h("p", { class: "empty" }, empty), hiddenNote);
+    return section("Eligible", `${shown.length} in ${new Set(shown.map((e) => e.subscription_id)).size} subscriptions`,
+      h("p", { class: "empty" }, empty), hiddenNote);
   }
-  return section("Eligible", total, sorted.map(([name, roles]) => {
-    const on = roles.filter(isActive).length;
-    roles.sort((a, b) => a.role.localeCompare(b.role));
-    return h("details", {
-      class: "card group", open: Boolean(q) || ui.open.has(name),
-      // A two-finger click: the app's own menu, with Hide Subscription.
-      oncontextmenu: hideMenu("subscription", roles[0].subscription_id),
-      ontoggle: (ev) => { if (!q) ev.target.open ? ui.open.add(name) : ui.open.delete(name); },
-    },
-      h("summary", { class: "row" },
-        chevron(),
-        h("div", { class: "grow name" }, name),
-        on > 0 && pill("pass", [svg(PHASES.done.icon), `${on}`], `${on} active`),
-        h("span", { class: "muted" }, `${roles.length}`)),
-      roles.flatMap((e) => {
-        const open = ui.form?.kind === "activate" && ui.form.id === e.id;
-        const state = roleState(e);
-        const row = h("div", { class: `row role${state ? ` tone-${PHASES[state.phase].tone}` : ""}`, oncontextmenu: hideMenu("role", roleKey(e)) },
-          // Under the subscription's arrow: the role's mark, as on the cards above.
-          state && mark(state.phase, state.title),
-          h("div", { class: "grow" },
-            h("div", { class: "name" }, e.role),
-            // Narrower than the subscription: what kind of scope, then its name, each on a line.
-            e.scope_type !== "subscription" && h("div", { class: "sub" }, SCOPE_KINDS[e.scope_type] ?? e.scope_type),
-            e.scope_type !== "subscription" && h("div", { class: "sub scope-name" }, e.scope_name)),
-          h("button", {
-            // The word says what happens: Elevate goes straight through, Request needs an approver.
-            class: `btn small soft${open ? " toned tone-accent" : ""}`,
-            disabled: Boolean(state),
-            title: state ? state.title : e.approval == null ? null : e.approval ? "Needs approval" : "Activates straight away",
-            onclick: () => openForm("activate", e.id),
-          }, e.approval ? "Request" : "Elevate"));
-        return open ? [row, activateForm(e)] : [row];
-      }));
-  }), hiddenNote);
+  return [
+    pinned.length > 0 && section("Pinned", `${roleCount(pinned)} in ${pinned.length}`, pinned.map(subscriptionCard(q))),
+    rest.length > 0 && section("Eligible", total, rest.map(subscriptionCard(q))),
+    hiddenNote,
+  ];
 }
+
+/** A subscription in the eligible list: a row that opens to its roles. Pinned
+ *  and unpinned with a two-finger click, like hiding. */
+const subscriptionCard = (q) => ([name, roles]) => {
+  const on = roles.filter(isActive).length;
+  const id = roles[0].subscription_id;
+  roles.sort((a, b) => a.role.localeCompare(b.role));
+  return h("details", {
+    class: "card group", open: Boolean(q) || ui.open.has(name),
+    // A two-finger click: the app's own menu, with Pin and Hide Subscription.
+    oncontextmenu: itemMenu("subscription", id),
+    ontoggle: (ev) => { if (!q) ev.target.open ? ui.open.add(name) : ui.open.delete(name); },
+  },
+    h("summary", { class: "row" },
+      chevron(),
+      h("div", { class: "grow name" }, name),
+      on > 0 && pill("pass", [svg(PHASES.done.icon), `${on}`], `${on} active`),
+      h("span", { class: "muted" }, `${roles.length}`)),
+    roles.flatMap((e) => {
+      const open = ui.form?.kind === "activate" && ui.form.id === e.id;
+      const state = roleState(e);
+      const row = h("div", { class: `row role${state ? ` tone-${PHASES[state.phase].tone}` : ""}`, oncontextmenu: itemMenu("role", roleKey(e)) },
+        // Under the subscription's arrow: the role's mark, as on the cards above.
+        state && mark(state.phase, state.title),
+        h("div", { class: "grow" },
+          h("div", { class: "name" }, e.role),
+          // Narrower than the subscription: what kind of scope, then its name, each on a line.
+          e.scope_type !== "subscription" && h("div", { class: "sub" }, SCOPE_KINDS[e.scope_type] ?? e.scope_type),
+          e.scope_type !== "subscription" && h("div", { class: "sub scope-name" }, e.scope_name)),
+        h("button", {
+          // The word says what happens: Elevate goes straight through, Request needs an approver.
+          class: `btn small soft${open ? " toned tone-accent" : ""}`,
+          disabled: Boolean(state),
+          title: state ? state.title : e.approval == null ? null : e.approval ? "Needs approval" : "Activates straight away",
+          onclick: () => openForm("activate", e.id),
+        }, e.approval ? "Request" : "Elevate"));
+      return open ? [row, activateForm(e)] : [row];
+    }));
+};
 
 /** "Today 14:03", "Yesterday 09:12", or "Mon 19 Oct 14:03". */
 function when(at) {
@@ -836,7 +850,8 @@ function render() {
       approvals(),
       active(),
       mine(),
-      eligible(),
+      // Pinned and Eligible.
+      ...[eligible()].flat(),
     ].filter(Boolean));
   content.scrollTop = scroll;
 

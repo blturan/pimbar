@@ -54,6 +54,8 @@ pub struct Snapshot {
     pub hidden: Vec<String>,
     /// Single roles left out of it, as `scope|role definition id`.
     pub hidden_roles: Vec<String>,
+    /// Subscriptions listed under Pinned, above the rest, by id.
+    pub pinned: Vec<String>,
     pub update: update::Update,
 }
 

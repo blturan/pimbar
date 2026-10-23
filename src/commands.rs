@@ -367,20 +367,22 @@ pub fn set_hidden(app: AppHandle, ctx: Ctx, kind: String, key: String, hidden: b
     hide_item(&app, ctx.inner(), &kind, &key, hidden);
 }
 
+/// Puts `key` in `list`, or takes it out; the list as it then is.
+fn mark(list: &mut Vec<String>, key: &str, on: bool) -> Vec<String> {
+    list.retain(|k| k != key);
+    if on {
+        list.push(key.to_owned());
+    }
+    list.clone()
+}
+
 /// `kind` is `subscription` (key: its id) or `role` (key: `scope|role definition id`).
 pub fn hide_item(app: &AppHandle, shared: &Arc<Shared>, kind: &str, key: &str, hidden: bool) {
-    let toggle = |list: &mut Vec<String>| {
-        list.retain(|k| k != key);
-        if hidden {
-            list.push(key.to_owned());
-        }
-        list.clone()
-    };
     let list = {
         let mut snap = shared.snap.lock().unwrap();
         match kind {
-            "subscription" => toggle(&mut snap.hidden),
-            "role" => toggle(&mut snap.hidden_roles),
+            "subscription" => mark(&mut snap.hidden, key, hidden),
+            "role" => mark(&mut snap.hidden_roles, key, hidden),
             _ => return,
         }
     };
@@ -394,13 +396,28 @@ pub fn hide_item(app: &AppHandle, shared: &Arc<Shared>, kind: &str, key: &str, h
     publish(app, shared);
 }
 
-/// The menu a two-finger click on a subscription or role opens. Its item's id
-/// says what to hide; main.rs's menu handler does it.
+/// Pins a subscription (by id): it's listed under Pinned, above the rest. Or unpins it.
+pub fn pin_item(app: &AppHandle, shared: &Arc<Shared>, key: &str, pinned: bool) {
+    let list = mark(&mut shared.snap.lock().unwrap().pinned, key, pinned);
+    if let Some(path) = shared.settings.get() {
+        Settings::edit(path, |s| s.pinned = list);
+    }
+    publish(app, shared);
+}
+
+/// The menu a two-finger click on a subscription or role opens: Pin or Unpin
+/// Subscription, and Hide. Its items' ids say what to do; main.rs's menu handler does it.
 #[tauri::command]
-pub fn hide_menu(window: WebviewWindow, kind: String, key: String) -> Result<(), String> {
-    let label = if kind == "role" { "Hide Role" } else { "Hide Subscription" };
-    let item = MenuItem::with_id(&window, format!("hide:{kind}:{key}"), label, true, None::<&str>).map_err(error)?;
-    let menu = Menu::with_items(&window, &[&item]).map_err(error)?;
+pub fn item_menu(window: WebviewWindow, ctx: Ctx, kind: String, key: String) -> Result<(), String> {
+    let hide = if kind == "role" { "Hide Role" } else { "Hide Subscription" };
+    let hide = MenuItem::with_id(&window, format!("hide:{kind}:{key}"), hide, true, None::<&str>).map_err(error)?;
+    let menu = Menu::with_items(&window, &[&hide]).map_err(error)?;
+    if kind == "subscription" {
+        let pinned = ctx.snap.lock().unwrap().pinned.contains(&key);
+        let (id, label) = if pinned { ("unpin", "Unpin Subscription") } else { ("pin", "Pin Subscription") };
+        let pin = MenuItem::with_id(&window, format!("{id}:{key}"), label, true, None::<&str>).map_err(error)?;
+        menu.insert(&pin, 0).map_err(error)?;
+    }
     window.popup_menu(&menu).map_err(error)
 }
 

@@ -67,7 +67,7 @@ fn main() {
             commands::skip_login,
             commands::set_appearance,
             commands::set_hidden,
-            commands::hide_menu,
+            commands::item_menu,
             commands::check_for_update,
             commands::install_update,
             commands::move_to_applications,
@@ -133,6 +133,7 @@ fn main() {
                 snap.appearance = settings.appearance.clone();
                 snap.hidden = settings.hidden.clone();
                 snap.hidden_roles = settings.hidden_roles.clone();
+                snap.pinned = settings.pinned.clone();
                 snap.ask_login = !settings.asked_login && snap.login == login::Login::Off;
                 // From its installer, moving to Applications comes first: no
                 // other question, and nothing from Azure until it has.
@@ -161,10 +162,17 @@ fn main() {
             }
             Ok(())
         })
-        // The two-finger-click menu's Hide Subscription or Hide Role: `hide:<kind>:<key>`.
+        // The two-finger-click menu: Hide Subscription or Hide Role (`hide:<kind>:<key>`),
+        // and Pin or Unpin Subscription (`pin:<id>`, `unpin:<id>`).
         .on_menu_event(|app, event| {
-            if let Some((kind, key)) = event.id().as_ref().strip_prefix("hide:").and_then(|rest| rest.split_once(':')) {
-                commands::hide_item(app, app.state::<Arc<Shared>>().inner(), kind, key, true);
+            let shared = app.state::<Arc<Shared>>();
+            let id = event.id().as_ref();
+            if let Some((kind, key)) = id.strip_prefix("hide:").and_then(|rest| rest.split_once(':')) {
+                commands::hide_item(app, shared.inner(), kind, key, true);
+            } else if let Some(key) = id.strip_prefix("pin:") {
+                commands::pin_item(app, shared.inner(), key, true);
+            } else if let Some(key) = id.strip_prefix("unpin:") {
+                commands::pin_item(app, shared.inner(), key, false);
             }
         })
         .on_window_event(|window, event| {

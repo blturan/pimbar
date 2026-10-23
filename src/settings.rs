@@ -43,6 +43,9 @@ pub struct Settings {
     /// Single roles left out of the eligible list, as `scope|role definition id`.
     #[serde(default)]
     pub hidden_roles: Vec<String>,
+    /// Subscriptions listed under Pinned, above the rest, by id.
+    #[serde(default)]
+    pub pinned: Vec<String>,
 }
 
 /// The panel's looks; `system` follows macOS.
@@ -73,6 +76,7 @@ impl Default for Settings {
             update_notified: String::new(),
             hidden: Vec::new(),
             hidden_roles: Vec::new(),
+            pinned: Vec::new(),
         }
     }
 }
