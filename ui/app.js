@@ -195,20 +195,18 @@ function active() {
     const t = taskFor(a.scope, a.role_def_id);
     const where = a.scope_name === subName(a.subscription_id) ? a.scope_name : `${a.scope_name} · ${subName(a.subscription_id)}`;
     const scheduled = t?.phase === "waiting" && t.kind === "deactivate";
-    // Time left, grey; amber in its last 10 minutes, so an ending role catches the eye.
-    const soon = a.end && new Date(a.end) - Date.now() <= 10 * 60000;
     const [phase, sub, right] = scheduled
       ? ["waiting", where, [
         // Why it waits is in the pill's tooltip.
         pill("warn", `Stops ${t.until ? clock(t.until) : "soon"}`, "PIM won't stop a role in its first 5 minutes after activating"),
-        h("button", { class: "btn small", title: "Cancel the stop: the role stays active", onclick: () => run("cancel", { id: t.id }) }, "Undo")]]
+        xButton("Cancel the stop: the role stays active", () => run("cancel", { id: t.id }))]]
+      // Stopping: nothing to press, so its pill takes the far right, where the others have their ✕.
       : t
-        ? ["running", null, miniPill("accent", "Stopping")]
-        : ["done", where, [pill(soon ? "warn" : null, left(a.end), a.end ? `Until ${clock(a.end)}` : null), stopButton(a, where)]];
-    // Stopping: one line, like a task.
-    return h("div", { class: "card" }, h("div", { class: `row task tone-${PHASES[phase].tone}${sub ? "" : " single"}` },
+        ? ["running", where, pill("accent", "Stopping")]
+        : ["done", where, [pill(null, left(a.end), a.end ? `Until ${clock(a.end)}` : null), stopButton(a, where)]];
+    return h("div", { class: "card" }, h("div", { class: `row task tone-${PHASES[phase].tone}` },
       mark(phase),
-      sub ? h("div", { class: "grow" }, h("div", { class: "name" }, a.role), h("div", { class: "sub" }, sub)) : oneLine(a.role, where),
+      h("div", { class: "grow" }, h("div", { class: "name" }, a.role), h("div", { class: "sub" }, sub)),
       right));
   }));
 }
@@ -606,11 +604,11 @@ function taskList() {
   const tasks = snap.tasks.filter((t) => !(t.phase === "waiting" && t.kind === "deactivate"));
   if (!tasks.length) return null;
   const busy = tasks.filter(isOpen).length;
-  // Two or more finished: Clear, in the title, clears them at once (into the history, like their ✕s).
+  // Anything finished: Clear, in the title, clears it all at once (into the history, like the ✕s).
   const finished = tasks.length - busy;
   return h("section", { class: "section" },
     h("h2", { class: "title" }, "Tasks", busy > 0 && h("span", {}, `· ${busy}`),
-      finished > 1 && h("button", { class: "title-link", title: "Clear finished tasks", onclick: () => invoke("dismiss_finished") }, "Clear")),
+      finished > 0 && h("button", { class: "title-link", title: "Clear finished tasks", onclick: () => invoke("dismiss_finished") }, "Clear")),
     tasks.map((t) => h("div", { class: "card" }, taskRow(t))));
 }
 
