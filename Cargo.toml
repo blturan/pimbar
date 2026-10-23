@@ -7,6 +7,15 @@ license = "Apache-2.0"
 repository = "https://github.com/blturan/pimbar"
 authors = ["blturan"]
 
+# For cargo-release: see Releasing in CONTRIBUTING.md.
+[package.metadata.release]
+publish = false
+allow-branch = ["main"]
+sign-commit = true
+sign-tag = true
+tag-message = "pimbar {{version}}"
+pre-release-commit-message = "chore: release {{version}}"
+
 [dependencies]
 anyhow = "1.0.104"
 base64 = "0.23.1"

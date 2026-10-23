@@ -75,12 +75,18 @@ recorded with tooling that isn't in the repository.
 
 ## Releasing
 
-Bump `version` in `Cargo.toml`, commit, then tag and push. The tag has to be
-signed with a key in `.github/allowed_signers`:
+With [cargo-release](https://github.com/crate-ci/cargo-release)
+(`brew install cargo-release`), from a clean, pushed `main`:
 
 ```sh
-git tag -s v0.2.0 -m "pimbar 0.2.0" && git push origin v0.2.0
+cargo release minor             # dry run: shows what it would do
+cargo release minor --execute   # patch, minor or major
 ```
+
+It bumps `version` in `Cargo.toml` and `Cargo.lock`, commits
+`chore: release <version>`, tags `v<version>` and pushes both. The commit and
+tag are signed: the release workflow only runs for a tag signed with a key in
+`.github/allowed_signers`.
 
 `.github/workflows/release.yml` checks the version, builds the .dmg, publishes
 the release and points the Homebrew cask at it. The workflow pushes that cask
