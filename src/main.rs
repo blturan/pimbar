@@ -31,7 +31,7 @@ mod tasks;
 mod update;
 mod view;
 
-use panel::{PANEL, closed, toggle};
+use panel::{PANEL, closed, show, toggle};
 use settings::Settings;
 use state::{Shared, Snapshot};
 use std::process::Command;
@@ -40,7 +40,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::time::Duration;
 use tauri::image::Image;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, Theme, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{Manager, RunEvent, Theme, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use policies::load_json;
 use sync::poll;
 use view::{badge, set_icon};
@@ -81,6 +81,7 @@ fn main() {
         .setup(move |app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            stay_awake();
 
             let panel = WebviewWindowBuilder::new(app, "popover", WebviewUrl::App("index.html".into()))
                 .title("pimbar")
@@ -182,8 +183,17 @@ fn main() {
                 _ => {}
             }
         })
-        .run(tauri::generate_context!())
-        .expect("pimbar could not start");
+        .build(tauri::generate_context!())
+        .expect("pimbar could not start")
+        .run(|app, event| {
+            // macOS brings pimbar forward (a click on one of its notifications, or
+            // opening it again from Finder): with nothing to show it would sit
+            // there frontmost, so show the panel.
+            #[cfg(target_os = "macos")]
+            if let RunEvent::Reopen { .. } = event {
+                show(app);
+            }
+        });
 }
 
 /// An app started from Finder doesn't get the shell's `PATH`, so it wouldn't
@@ -211,4 +221,21 @@ fn fix_path() {
 
 #[cfg(not(target_os = "macos"))]
 fn fix_path() {}
+
+/// Keeps macOS from napping pimbar. With the panel closed it has no window on
+/// screen, and App Nap would hold back its timers: the polls, and so the
+/// notifications, could come minutes late. The Mac may still sleep.
+#[cfg(target_os = "macos")]
+fn stay_awake() {
+    use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
+    let activity = NSProcessInfo::processInfo().beginActivityWithOptions_reason(
+        NSActivityOptions::UserInitiatedAllowingIdleSystemSleep,
+        &NSString::from_str("Checking PIM requests and approvals"),
+    );
+    // For as long as pimbar runs.
+    std::mem::forget(activity);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn stay_awake() {}
 

@@ -28,6 +28,18 @@ pub fn toggle(app: &AppHandle, icon: Rect) {
     pressed(app, true);
 }
 
+/// Opens the panel under the icon, if it isn't open: when macOS brings pimbar
+/// forward, say for a click on one of its notifications.
+pub fn show(app: &AppHandle) {
+    let Some(panel) = app.get_webview_window("popover") else { return };
+    if panel.is_visible().unwrap_or(false) {
+        return;
+    }
+    if let Some(icon) = app.tray_by_id("pim").and_then(|t| t.rect().ok().flatten()) {
+        toggle(app, icon);
+    }
+}
+
 /// Shows the menu bar icon pressed (macOS's rounded highlight behind it) while
 /// the panel is open, as menu bar menus are. macOS clears it when the mouse
 /// button comes up, so it's set again after the click.

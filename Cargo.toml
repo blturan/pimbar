@@ -14,6 +14,7 @@ chrono = { version = "0.4.45", features = ["serde"] }
 notify-rust = { version = "4.18", features = ["preview-macos-un"] }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSButton", "NSControl", "NSResponder", "NSView", "NSStatusItem", "NSStatusBarButton"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSProcessInfo", "NSString"] }
 objc2-service-management = { version = "0.3.2", features = ["SMAppService"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "native-tls", "system-proxy", "http2"] }
 serde = { version = "1.0.229", features = ["derive"] }

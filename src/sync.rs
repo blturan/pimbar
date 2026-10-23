@@ -97,8 +97,13 @@ pub async fn load(shared: &Shared, full: bool) -> (bool, Vec<(String, String)>) 
     // Whether macOS lets pimbar notify. The first time, macOS asks the user
     // ("pimbar would like to send you notifications"); after that it answers
     // from what they chose, which can change in System Settings at any time.
+    // macOS answers only once the user has: a question still unanswered mustn't
+    // hold up the sync, so that round says "not known yet" and the next asks again.
     if full {
-        let allowed = notify_rust::request_auth().await.map_err(|e| eprintln!("pimbar: notifications: {e}")).ok();
+        let allowed = match tokio::time::timeout(Duration::from_secs(3), notify_rust::request_auth()).await {
+            Ok(answer) => answer.map_err(|e| eprintln!("pimbar: notifications: {e}")).ok(),
+            Err(_) => None,
+        };
         shared.snap.lock().unwrap().notifications = allowed;
     }
     let token = match shared.az.token().await {

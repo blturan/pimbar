@@ -72,6 +72,10 @@ pub struct Task {
     /// An approver just decided: worth finding out who, and telling the user.
     #[serde(skip)]
     pub decided: bool,
+    /// An approver approved it, and PIM is setting up the access: once that's
+    /// done, it was an approval (the user hears) rather than a plain activation.
+    #[serde(skip)]
+    pub approved: bool,
     /// Already in the history.
     #[serde(skip)]
     pub logged: bool,
@@ -98,6 +102,7 @@ impl Task {
             sent: false,
             sent_at: None,
             decided: false,
+            approved: false,
             logged: false,
         }
     }
@@ -142,9 +147,11 @@ pub fn reconcile(tasks: &mut Vec<Task>, active: &[Active], latest: &[Request]) {
         match t.kind {
             Kind::Activate => {
                 if let Some(a) = active.iter().find(|a| t.is_for(&a.scope, &a.role_def_id)) {
+                    // Approved: seen right away, or a poll ago while PIM set it up.
+                    let approved = was_waiting || t.approved;
                     t.until = a.end;
-                    t.finish(Phase::Done, if was_waiting { "Approved" } else { "Active" });
-                    t.decided = was_waiting;
+                    t.finish(Phase::Done, if approved { "Approved" } else { "Active" });
+                    t.decided = approved;
                     continue;
                 }
                 // This task's request: the latest for its role, not one from before it.
@@ -176,9 +183,10 @@ pub fn reconcile(tasks: &mut Vec<Task>, active: &[Active], latest: &[Request]) {
                     _ => {
                         if was_waiting {
                             t.sent_at = Some(now);
+                            t.approved = true;
                         }
                         t.phase = Phase::Running;
-                        t.message = if was_waiting { "Approved, setting up access…" } else { "Setting up access…" }.into();
+                        t.message = if t.approved { "Approved, setting up access…" } else { "Setting up access…" }.into();
                     }
                 }
             }
@@ -322,6 +330,28 @@ mod tests {
         assert!(tasks[0].phase == Phase::Running);
         assert!(!expire(&mut tasks));
         assert!(tasks[0].phase == Phase::Running);
+    }
+
+    #[test]
+    fn approval_seen_while_access_is_set_up_is_still_an_approval() {
+        let mut tasks = vec![waited_half_an_hour()];
+        let started = tasks[0].started;
+        reconcile(&mut tasks, &[], &[request("Granted", started)]);
+        assert!(tasks[0].phase == Phase::Running && !tasks[0].decided);
+        reconcile(&mut tasks, &[], &[request("Granted", started)]);
+        assert!(tasks[0].message == "Approved, setting up access…");
+        let active = Active {
+            id: "a".into(),
+            start: Some(Utc::now()),
+            role: "Reader".into(),
+            scope: "/subscriptions/s".into(),
+            scope_name: "S".into(),
+            subscription_id: "s".into(),
+            role_def_id: "role".into(),
+            end: None,
+        };
+        reconcile(&mut tasks, &[active], &[request("Provisioned", started)]);
+        assert!(tasks[0].phase == Phase::Done && tasks[0].message == "Approved" && tasks[0].decided);
     }
 
     #[test]
