@@ -212,6 +212,8 @@ pub fn check_update(app: &AppHandle, shared: &Arc<Shared>, force: bool) {
     if !due || shared.checking_update.swap(true, Relaxed) {
         return;
     }
+    shared.snap.lock().unwrap().update.checking = true;
+    publish(app, shared);
     let (app, shared) = (app.clone(), Arc::clone(shared));
     tauri::async_runtime::spawn(async move {
         let result = update::latest(&app).await;
@@ -220,6 +222,7 @@ pub fn check_update(app: &AppHandle, shared: &Arc<Shared>, force: bool) {
         {
             let mut snap = shared.snap.lock().unwrap();
             let u = &mut snap.update;
+            u.checking = false;
             u.checked_at = Some(Utc::now());
             u.via = if update::via_homebrew() { "homebrew" } else { "self" }.into();
             match result {

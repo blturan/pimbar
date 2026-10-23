@@ -32,6 +32,8 @@ pub struct Update {
     pub checked_at: Option<DateTime<Utc>>,
     /// `homebrew` or `self`: who installs the update.
     pub via: String,
+    /// Asking GitHub right now.
+    pub checking: bool,
     /// The update has started; pimbar is about to quit.
     pub updating: bool,
     pub error: Option<String>,

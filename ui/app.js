@@ -346,26 +346,32 @@ function stepper(label, key, value, max) {
       h("button", { class: "step", "aria-label": `${label}: more often`, disabled: value >= max, onclick: () => set(more) }, "+")));
 }
 
-/** Settings → Updates: this version and whether there's a newer one (with the
- *  button for it), when pimbar last looked, and who installs updates. */
+/** Settings → Updates: this version, and a pill that says where it stands and
+ *  is also the button: check again, retry, or update. Under it, quietly, who
+ *  installs updates (Homebrew or the .dmg) and when pimbar last looked. */
 function updateRow() {
   const u = snap.update;
-  return [
-    h("div", { class: "row" },
-      // How it came, quietly: Homebrew or the .dmg, which is also how Update installs.
-      h("div", { class: "grow name" }, `Version ${snap.version} `,
-        h("span", { class: "muted via" }, u.via === "homebrew" ? "(Homebrew)" : "(.dmg)")),
-      u.updating ? pill("accent", [spin(), "Updating"])
-        : u.available ? pill("accent", `${u.latest} available`)
-        : u.latest ? pill("pass", "Up to date") : null,
-      u.available
-        ? h("button", { class: "btn small toned tone-accent", disabled: u.updating, onclick: () => invoke("install_update").catch((err) => flash("fail", String(err))) }, "Update")
-        : h("button", { class: "btn small", onclick: () => invoke("check_for_update") }, "Check now")),
-    // Grey, whatever happened; what went wrong is in the tooltip.
-    h("div", { class: "note tone-never", title: u.error && !u.updating ? u.error : null },
-      u.error && !u.updating ? (u.available ? "Unable to update right now" : "Unable to check for updates")
-        : u.checked_at ? `Checked ${ago(u.checked_at)}` : "Not checked yet"),
-  ];
+  const check = () => invoke("check_for_update");
+  const update = () => invoke("install_update").catch((err) => flash("fail", String(err)));
+  const again = svg('<svg viewBox="0 0 16 16"><path d="M13.6 6.4A5.8 5.8 0 1 0 13.8 9"/><path d="M14 2.5v4h-4"/></svg>');
+  const button = (tone, kids, onclick, title) => h("button", { class: `pill click tone-${tone ?? "never"}`, title, onclick }, kids);
+  // What went wrong is in the tooltip.
+  const failed = u.error && !u.updating;
+  const pillOrButton =
+    u.updating ? pill("accent", [spin(), "Updating"])
+    : u.checking ? pill(null, [spin(), "Checking"])
+    : u.available ? button("accent", `Update to ${u.latest}`, update, failed ? u.error : null)
+    : failed ? button("fail", ["Retry", again], check, u.error)
+    : u.latest ? button("pass", ["Up to date", again], check, "Check again")
+    : button(null, ["Check now", again], check);
+  const when = failed ? (u.available ? "unable to update right now" : "unable to check")
+    : u.checked_at ? `checked ${ago(u.checked_at)}` : "not checked yet";
+  const via = { homebrew: "Homebrew", self: ".dmg" }[u.via];
+  return h("div", { class: "row" },
+    h("div", { class: "grow" },
+      h("div", { class: "name" }, `Version ${snap.version}`),
+      h("div", { class: "sub", title: failed ? u.error : null }, via ? `${via} · ${when}` : when[0].toUpperCase() + when.slice(1))),
+    pillOrButton);
 }
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;

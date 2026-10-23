@@ -209,8 +209,10 @@ textarea.input { height: auto; min-height: 52px; padding: 7px 10px; resize: none
 .loading { padding-top: 40px; text-align: center; }
 .loading p { margin: 12px 0 0; }
 /* A short line under a settings row, e.g. after a test notification. */
-.via { font-weight: 400; }
 .note { padding: 0 10px 10px; font-size: 12px; color: var(--tone); animation: rise 0.18s var(--ease); }
+/* A pill that's also a button (Settings → Updates: Up to date ↻, Update to …). */
+.pill.click { border: 0; font-family: inherit; cursor: pointer; transition: background 0.12s; }
+.pill.click:hover { background: color-mix(in srgb, var(--tone, var(--muted)) 22%, transparent); }
 .spinner { display: block; margin: 0 auto; width: 22px; height: 22px; border: 2.5px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; }
 
 /* First run: one question, answered once. */
