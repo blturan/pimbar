@@ -404,30 +404,35 @@ pub fn hide_menu(window: WebviewWindow, kind: String, key: String) -> Result<(),
     window.popup_menu(&menu).map_err(error)
 }
 
+/// An interval as people say it: seconds under a minute, minutes from there.
+fn span(seconds: u64) -> String {
+    if seconds < 60 { format!("{seconds} seconds") } else { format!("{} minutes", seconds / 60) }
+}
+
 /// Sets how often pimbar checks requests and approvals, and reloads the eligible
-/// roles, or that it only checks when asked; checks now.
+/// roles (both in seconds), or that it only checks when asked; checks now.
 #[tauri::command]
 pub fn set_sync(app: AppHandle, ctx: Ctx, requests: u64, roles: u64, manual: bool) -> Result<(), String> {
     let (r, e) = (settings::REQUESTS, settings::ROLES);
     if !r.contains(&requests) {
-        return Err(format!("Requests and approvals: {}–{} minutes.", r.start(), r.end()));
+        return Err(format!("Requests and approvals: {} to {}.", span(*r.start()), span(*r.end())));
     }
     if !e.contains(&roles) {
-        return Err(format!("Eligible roles: {}–{} minutes.", e.start(), e.end()));
+        return Err(format!("Eligible roles: {} to {}.", span(*e.start()), span(*e.end())));
     }
-    ctx.sync_minutes.store(requests, Relaxed);
-    ctx.roles_minutes.store(roles, Relaxed);
+    ctx.sync_seconds.store(requests, Relaxed);
+    ctx.roles_seconds.store(roles, Relaxed);
     ctx.manual.store(manual, Relaxed);
     {
         let mut snap = ctx.snap.lock().unwrap();
-        snap.sync_minutes = requests;
-        snap.roles_minutes = roles;
+        snap.sync_seconds = requests;
+        snap.roles_seconds = roles;
         snap.manual = manual;
     }
     if let Some(path) = ctx.settings.get() {
         Settings::edit(path, |s| {
-            s.sync_minutes = requests;
-            s.roles_minutes = roles;
+            s.sync_seconds = requests;
+            s.roles_seconds = roles;
             s.manual = manual;
         });
     }

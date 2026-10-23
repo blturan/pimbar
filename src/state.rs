@@ -43,9 +43,9 @@ pub struct Snapshot {
     /// move to Applications, and nothing else.
     pub misplaced: bool,
     pub version: String,
-    /// How often pimbar checks requests and approvals, and reloads the eligible roles, in minutes.
-    pub sync_minutes: u64,
-    pub roles_minutes: u64,
+    /// How often pimbar checks requests and approvals, and reloads the eligible roles, in seconds.
+    pub sync_seconds: u64,
+    pub roles_seconds: u64,
     /// Only checks when asked, and while a task runs.
     pub manual: bool,
     /// The panel's look: `system`, `light` or `dark`.
@@ -72,9 +72,9 @@ pub struct Shared {
     pub animating: AtomicBool,
     pub settings: OnceLock<PathBuf>,
     pub history: OnceLock<PathBuf>,
-    /// How often to poll when nothing is running, and to reload the eligible roles, in minutes.
-    pub sync_minutes: AtomicU64,
-    pub roles_minutes: AtomicU64,
+    /// How often to poll when nothing is running, and to reload the eligible roles, in seconds.
+    pub sync_seconds: AtomicU64,
+    pub roles_seconds: AtomicU64,
     pub manual: AtomicBool,
     /// Each eligible role's PIM policy, by `policy_key`; kept on disk.
     pub policies: Mutex<HashMap<String, Policy>>,
@@ -108,8 +108,8 @@ impl Shared {
             animating: AtomicBool::new(false),
             settings: OnceLock::new(),
             history: OnceLock::new(),
-            sync_minutes: AtomicU64::new(1),
-            roles_minutes: AtomicU64::new(15),
+            sync_seconds: AtomicU64::new(30),
+            roles_seconds: AtomicU64::new(4 * 3600),
             manual: AtomicBool::new(false),
             policies: Mutex::new(HashMap::new()),
             policies_path: OnceLock::new(),

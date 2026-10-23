@@ -4,9 +4,9 @@
 //! there is nothing to register in Entra.
 //!
 //! PIM has no webhooks (Graph change notifications don't cover it), so it
-//! polls: requests and approvals every minute, every few seconds while a task
-//! is running, and the eligible roles, which rarely change and are the big
-//! call, every quarter hour. Both intervals can be changed in Settings, or
+//! polls: requests and approvals every 30 seconds, every few seconds while a
+//! task is running, and the eligible roles, which rarely change and are the
+//! big call, every four hours. Both intervals can be changed in Settings, or
 //! polling left to the refresh button (manual).
 //! Actions answer at once and carry on as tasks (see `tasks`).
 //!
@@ -112,8 +112,8 @@ fn main() {
             // login, or to offer moving to Applications.
             let dir = app.path().app_config_dir()?;
             let settings = Settings::load(&dir.join("settings.json"));
-            shared.sync_minutes.store(settings.sync_minutes, Relaxed);
-            shared.roles_minutes.store(settings.roles_minutes, Relaxed);
+            shared.sync_seconds.store(settings.sync_seconds, Relaxed);
+            shared.roles_seconds.store(settings.roles_seconds, Relaxed);
             shared.manual.store(settings.manual, Relaxed);
             let _ = shared.settings.set(dir.join("settings.json"));
             let _ = shared.history.set(dir.join("history.json"));
@@ -126,8 +126,8 @@ fn main() {
                 shared.next_task.store(next, Relaxed);
                 snap.login = login::status();
                 snap.version = app.package_info().version.to_string();
-                snap.sync_minutes = settings.sync_minutes;
-                snap.roles_minutes = settings.roles_minutes;
+                snap.sync_seconds = settings.sync_seconds;
+                snap.roles_seconds = settings.roles_seconds;
                 snap.manual = settings.manual;
                 snap.appearance = settings.appearance.clone();
                 snap.hidden = settings.hidden.clone();

@@ -25,7 +25,7 @@ pub async fn poll(app: AppHandle, shared: Arc<Shared>) {
     let mut warned_expiry: HashSet<String> = HashSet::new();
 
     loop {
-        let full = shared.want_full.swap(false, Relaxed) || last_full.is_none_or(|t| t.elapsed() >= Duration::from_secs(60 * shared.roles_minutes.load(Relaxed)));
+        let full = shared.want_full.swap(false, Relaxed) || last_full.is_none_or(|t| t.elapsed() >= Duration::from_secs(shared.roles_seconds.load(Relaxed)));
         if full {
             shared.snap.lock().unwrap().loading = true;
             publish(&app, &shared);
@@ -75,7 +75,7 @@ pub async fn poll(app: AppHandle, shared: Arc<Shared>) {
         // manual, nothing until the refresh button (or an action) wakes it.
         let busy = snap.tasks.iter().any(|t| t.phase == Phase::Running);
         let manual = shared.manual.load(Relaxed);
-        let every = Duration::from_secs(60 * shared.sync_minutes.load(Relaxed));
+        let every = Duration::from_secs(shared.sync_seconds.load(Relaxed));
         let wait = async {
             match (busy, manual) {
                 (true, _) => tokio::time::sleep(POLL_BUSY).await,

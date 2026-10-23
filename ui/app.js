@@ -319,31 +319,39 @@ function testNotification() {
 }
 
 /** Saves the sync settings, changing only what's given. */
-const setSync = (change) => invoke("set_sync", { requests: snap.sync_minutes, roles: snap.roles_minutes, manual: snap.manual, ...change })
+const setSync = (change) => invoke("set_sync", { requests: snap.sync_seconds, roles: snap.roles_seconds, manual: snap.manual, ...change })
   .catch((err) => flash("fail", String(err)));
 
-/** The values − and + step through. */
-const STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 240];
+/** The intervals − and + step through, in seconds; the first and last are the shortest and longest allowed. */
+const REQUESTS = [15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+const ROLES = [60, 120, 300, 600, 900, 1800, 3600, 7200, 14400];
 
-/** A sync interval: − [n min] +, saved as it changes; the number can be typed too. */
-function stepper(label, key, value, max) {
+/** A sync interval, in seconds: − [n min] +, saved as it changes. Shown in
+ *  seconds under a minute and in minutes from there; the number can be typed
+ *  too, in the unit shown. */
+function stepper(label, key, value, steps) {
+  const [min, max] = [steps[0], steps.at(-1)];
+  const per = value < 60 ? 1 : 60;
+  const unit = value < 60 ? "sec" : "min";
   const set = (n) => {
-    n = Math.min(max, Math.max(1, Math.round(n)));
+    n = Math.min(max, Math.max(min, Math.round(n)));
+    // Past a minute, whole minutes.
+    if (n >= 60) n = Math.round(n / 60) * 60;
     if (n !== value) setSync({ [key]: n });
   };
-  const less = STEPS.filter((s) => s < value).pop() ?? 1;
-  const more = STEPS.find((s) => s > value && s <= max) ?? max;
+  const less = steps.filter((s) => s < value).pop() ?? min;
+  const more = steps.find((s) => s > value) ?? max;
   return h("div", { class: "row" },
     h("div", { class: "grow name" }, label),
     h("div", { class: "stepper" },
-      h("button", { class: "step", "aria-label": `${label}: less often`, disabled: value <= 1, onclick: () => set(less) }, "−"),
+      h("button", { class: "step", "aria-label": `${label}: more often`, disabled: value <= min, onclick: () => set(less) }, "−"),
       h("input", {
-        class: "step-value", type: "text", inputmode: "numeric", value: String(value), "aria-label": `${label}, minutes`,
-        onchange: (e) => { const n = parseInt(e.target.value, 10); if (Number.isFinite(n)) set(n); else e.target.value = value; },
+        class: "step-value", type: "text", inputmode: "numeric", value: String(value / per), "aria-label": `${label}, ${unit === "sec" ? "seconds" : "minutes"}`,
+        onchange: (e) => { const n = parseInt(e.target.value, 10); if (Number.isFinite(n)) set(n * per); else e.target.value = value / per; },
         onkeydown: (e) => { if (e.key === "Enter") e.target.blur(); },
       }),
-      h("span", { class: "step-unit" }, "min"),
-      h("button", { class: "step", "aria-label": `${label}: more often`, disabled: value >= max, onclick: () => set(more) }, "+")));
+      h("span", { class: "step-unit" }, unit),
+      h("button", { class: "step", "aria-label": `${label}: less often`, disabled: value >= max, onclick: () => set(more) }, "+")));
 }
 
 /** Settings → Updates: this version, and a pill that says where it stands and
@@ -438,8 +446,8 @@ function settingsPage() {
         h("div", { class: "segmented" },
           h("button", { "aria-pressed": String(!snap.manual), onclick: () => setSync({ manual: false }) }, "Automatic"),
           h("button", { "aria-pressed": String(snap.manual), onclick: () => setSync({ manual: true }) }, "Manual"))),
-      !snap.manual && stepper("Requests and approvals", "requests", snap.sync_minutes, 60),
-      !snap.manual && stepper("Eligible roles", "roles", snap.roles_minutes, 240))),
+      !snap.manual && stepper("Requests and approvals", "requests", snap.sync_seconds, REQUESTS),
+      !snap.manual && stepper("Eligible roles", "roles", snap.roles_seconds, ROLES))),
     section("Hidden", null, hiddenCard()),
     section("Notifications", null, h("div", { class: "card" },
       // One line: what, whether macOS allows it, and a test.

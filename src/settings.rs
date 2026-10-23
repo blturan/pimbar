@@ -1,27 +1,33 @@
 //! What pimbar remembers between runs, in
 //! `~/Library/Application Support/dev.pimbar.desktop/settings.json`.
+//! Intervals are in seconds.
 
 use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::Mutex;
 
-/// How often pimbar may check requests and approvals, in minutes.
-pub const REQUESTS: RangeInclusive<u64> = 1..=60;
-/// How often pimbar may reload the eligible roles, in minutes.
-pub const ROLES: RangeInclusive<u64> = 1..=240;
+/// How often pimbar may check requests and approvals.
+pub const REQUESTS: RangeInclusive<u64> = 15..=3600;
+/// How often pimbar may reload the eligible roles.
+pub const ROLES: RangeInclusive<u64> = 60..=14400;
 
 #[derive(Deserialize, Serialize)]
 pub struct Settings {
     /// Asked once whether to open at login; never again, whatever the answer.
     #[serde(default)]
     pub asked_login: bool,
-    /// How often to check requests and approvals (two small calls), in minutes.
+    /// How often to check requests and approvals (two small calls).
     #[serde(default = "default_sync")]
-    pub sync_minutes: u64,
-    /// How often to reload the eligible roles and subscription names (the two big calls), in minutes.
+    pub sync_seconds: u64,
+    /// How often to reload the eligible roles and subscription names (the two big calls).
     #[serde(default = "default_roles")]
-    pub roles_minutes: u64,
+    pub roles_seconds: u64,
+    /// Both in minutes, as pimbar 0.2 saved them: read once, then saved as seconds.
+    #[serde(default, skip_serializing)]
+    sync_minutes: Option<u64>,
+    #[serde(default, skip_serializing)]
+    roles_minutes: Option<u64>,
     /// Only check when asked (the refresh button), and while a task runs.
     #[serde(default)]
     pub manual: bool,
@@ -47,19 +53,21 @@ fn default_appearance() -> String {
 }
 
 fn default_sync() -> u64 {
-    1
+    30
 }
 
 fn default_roles() -> u64 {
-    15
+    4 * 3600
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Settings {
             asked_login: false,
-            sync_minutes: default_sync(),
-            roles_minutes: default_roles(),
+            sync_seconds: default_sync(),
+            roles_seconds: default_roles(),
+            sync_minutes: None,
+            roles_minutes: None,
             manual: false,
             appearance: default_appearance(),
             update_notified: String::new(),
@@ -72,11 +80,17 @@ impl Default for Settings {
 impl Settings {
     pub fn load(path: &Path) -> Self {
         let mut s: Settings = std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-        if !REQUESTS.contains(&s.sync_minutes) {
-            s.sync_minutes = default_sync();
+        if let Some(minutes) = s.sync_minutes.take() {
+            s.sync_seconds = minutes * 60;
         }
-        if !ROLES.contains(&s.roles_minutes) {
-            s.roles_minutes = default_roles();
+        if let Some(minutes) = s.roles_minutes.take() {
+            s.roles_seconds = minutes * 60;
+        }
+        if !REQUESTS.contains(&s.sync_seconds) {
+            s.sync_seconds = default_sync();
+        }
+        if !ROLES.contains(&s.roles_seconds) {
+            s.roles_seconds = default_roles();
         }
         if !APPEARANCES.contains(&s.appearance.as_str()) {
             s.appearance = default_appearance();
@@ -105,5 +119,23 @@ impl Settings {
             eprintln!("pimbar: couldn't save settings: {e}");
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn minutes_from_0_2_become_seconds() {
+        let path = std::env::temp_dir().join(format!("pimbar-settings-{}.json", std::process::id()));
+        std::fs::write(&path, r#"{ "sync_minutes": 5, "roles_minutes": 15 }"#).unwrap();
+        let s = Settings::load(&path);
+        assert_eq!((s.sync_seconds, s.roles_seconds), (300, 900));
+        Settings::edit(&path, |_| {});
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.contains(r#""sync_seconds": 300"#) && saved.contains(r#""roles_seconds": 900"#));
+        assert!(!saved.contains("_minutes"));
+        std::fs::remove_file(&path).unwrap();
     }
 }
