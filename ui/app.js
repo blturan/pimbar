@@ -191,24 +191,41 @@ function mark(phase, title = null) {
  *  minutes, PIM won't yet: the stop waits, says when, and can be undone. */
 function active() {
   if (!snap.active.length) return null;
-  return section("Active", snap.active.length, snap.active.map((a) => {
-    const t = taskFor(a.scope, a.role_def_id);
-    const where = a.scope_name === subName(a.subscription_id) ? a.scope_name : `${a.scope_name} · ${subName(a.subscription_id)}`;
-    const scheduled = t?.phase === "waiting" && t.kind === "deactivate";
-    const [phase, sub, right] = scheduled
-      ? ["waiting", where, [
-        // Why it waits is in the pill's tooltip.
-        pill("warn", `Stops ${t.until ? clock(t.until) : "soon"}`, "PIM won't stop a role in its first 5 minutes after activating"),
-        xButton("Cancel the stop: the role stays active", () => run("cancel", { id: t.id }))]]
-      // Stopping: nothing to press, so its pill takes the far right, where the others have their ✕.
-      : t
-        ? ["running", where, pill("accent", "Stopping")]
-        : ["done", where, [pill(null, left(a.end), a.end ? `Until ${clock(a.end)}` : null), stopButton(a, where)]];
-    return h("div", { class: "card" }, h("div", { class: `row task tone-${PHASES[phase].tone}` },
-      mark(phase),
-      h("div", { class: "grow" }, h("div", { class: "name" }, a.role), h("div", { class: "sub" }, sub)),
-      right));
-  }));
+  // Stop all, in the title: every role not already stopping, after asking.
+  const stoppable = snap.active.filter((a) => !taskFor(a.scope, a.role_def_id));
+  return h("section", { class: "section" },
+    h("h2", { class: "title" }, "Active", h("span", {}, `· ${snap.active.length}`),
+      stoppable.length > 0 && h("button", { class: "title-link", title: "Stop every active role", onclick: () => stopAll(stoppable) }, "Stop all")),
+    snap.active.map((a) => {
+      const t = taskFor(a.scope, a.role_def_id);
+      const where = a.scope_name === subName(a.subscription_id) ? a.scope_name : `${a.scope_name} · ${subName(a.subscription_id)}`;
+      const scheduled = t?.phase === "waiting" && t.kind === "deactivate";
+      const [phase, sub, right] = scheduled
+        ? ["waiting", where, [
+          // Why it waits is in the pill's tooltip.
+          pill("warn", `Stops ${t.until ? clock(t.until) : "soon"}`, "PIM won't stop a role in its first 5 minutes after activating"),
+          xButton("Cancel the stop: the role stays active", () => run("cancel", { id: t.id }))]]
+        // Stopping: nothing to press, so its pill takes the far right, where the others have their ✕.
+        : t
+          ? ["running", where, pill("accent", "Stopping")]
+          : ["done", where, [pill(null, left(a.end), a.end ? `Until ${clock(a.end)}` : null), stopButton(a, where)]];
+      return h("div", { class: "card" }, h("div", { class: `row task tone-${PHASES[phase].tone}` },
+        mark(phase),
+        h("div", { class: "grow" }, h("div", { class: "name" }, a.role), h("div", { class: "sub" }, sub)),
+        right));
+    }));
+}
+
+/** "A", "A and B", "A, B and C". */
+const listed = (names) => names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+
+/** Asks, then stops all of `roles`. */
+function stopAll(roles) {
+  const one = roles.length === 1;
+  ask(one ? "Stop this role?" : `Stop all ${roles.length} roles?`,
+    `You lose ${listed(roles.map((a) => a.role))}. To get ${one ? "it" : "them"} back, you'll have to ask for ${one ? "it" : "them"} again.`,
+    "Stop all",
+    () => run("deactivate_all"));
 }
 
 function mine() {
@@ -604,11 +621,11 @@ function taskList() {
   const tasks = snap.tasks.filter((t) => !(t.phase === "waiting" && t.kind === "deactivate"));
   if (!tasks.length) return null;
   const busy = tasks.filter(isOpen).length;
-  // Anything finished: Clear, in the title, clears it all at once (into the history, like the ✕s).
+  // Anything finished: Clear all, in the title, clears it at once (into the history, like the ✕s).
   const finished = tasks.length - busy;
   return h("section", { class: "section" },
     h("h2", { class: "title" }, "Tasks", busy > 0 && h("span", {}, `· ${busy}`),
-      finished > 0 && h("button", { class: "title-link", title: "Clear finished tasks", onclick: () => invoke("dismiss_finished") }, "Clear")),
+      finished > 0 && h("button", { class: "title-link", title: "Clear finished tasks", onclick: () => invoke("dismiss_finished") }, "Clear all")),
     tasks.map((t) => h("div", { class: "card" }, taskRow(t))));
 }
 

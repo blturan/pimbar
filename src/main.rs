@@ -59,6 +59,7 @@ fn main() {
             commands::refresh,
             commands::activate,
             commands::deactivate,
+            commands::deactivate_all,
             commands::cancel,
             commands::cancel_request,
             commands::review,

@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use tauri::{AppHandle, Manager};
 use crate::panel::closed;
 use crate::policies::ensure_policies;
-use crate::pim::Pim;
+use crate::pim::{Active, Pim};
 use crate::settings::{self, Settings};
 use crate::sync::{check_update, hide_handled};
 use crate::tasks::{self, Kind, Phase, Task};
@@ -158,6 +158,24 @@ pub fn deactivate(app: AppHandle, ctx: Ctx, id: String) -> Result<(), String> {
         }
         a
     };
+    stop(&app, &ctx, a);
+    Ok(())
+}
+
+/// Stops every active role that isn't already stopping, each as its own task, as `deactivate` does.
+#[tauri::command]
+pub fn deactivate_all(app: AppHandle, ctx: Ctx) {
+    let roles: Vec<Active> = {
+        let snap = ctx.snap.lock().unwrap();
+        snap.active.iter().filter(|a| !snap.tasks.iter().any(|t| t.open() && t.is_for(&a.scope, &a.role_def_id))).cloned().collect()
+    };
+    for a in roles {
+        stop(&app, &ctx, a);
+    }
+}
+
+/// Starts the task that stops role `a`.
+fn stop(app: &AppHandle, ctx: &Ctx, a: Active) {
     // Too soon after activating: wait until PIM allows it, rather than fail.
     let earliest = a.start.map(|t| t + MIN_ACTIVE).filter(|t| *t > Utc::now());
     let mut task = Task::new(Kind::Deactivate, &a.role, &a.scope_name, &a.scope, &a.role_def_id);
@@ -168,7 +186,7 @@ pub fn deactivate(app: AppHandle, ctx: Ctx, id: String) -> Result<(), String> {
         task.message = format!("Stops at {}: PIM won't stop a role in its first 5 minutes", t.with_timezone(&Local).format("%H:%M"));
     }
     let handle = app.clone();
-    start(&app, &ctx, task, move |s, id| async move {
+    start(app, ctx, task, move |s, id| async move {
         if let Some(wait) = earliest.and_then(|t| (t - Utc::now()).to_std().ok()) {
             tokio::time::sleep(wait).await;
         }
@@ -201,7 +219,6 @@ pub fn deactivate(app: AppHandle, ctx: Ctx, id: String) -> Result<(), String> {
             }
         }
     });
-    Ok(())
 }
 
 /// Undoes a stop that's waiting for PIM's five minutes: the role stays active,
