@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the app's Info.plist by Tauri. -->
+<plist version="1.0">
+<dict>
+	<!-- A menu bar app, never in the Dock: macOS reads this when it opens or
+	     brings pimbar forward (a click on a notification, say), where the
+	     activation policy main.rs sets comes too late. -->
+	<key>LSUIElement</key>
+	<true/>
+</dict>
+</plist>

@@ -22,22 +22,27 @@ pub fn toggle(app: &AppHandle, icon: Rect) {
         pressed(app, false);
         return;
     }
-    place(&panel, icon);
-    let _ = panel.show();
-    let _ = panel.set_focus();
-    pressed(app, true);
+    open(app, &panel, icon);
 }
 
 /// Opens the panel under the icon, if it isn't open: when macOS brings pimbar
-/// forward, say for a click on one of its notifications.
+/// forward, say for a click on one of its notifications. Even right after it
+/// closed: clicking the notification is what closed it.
 pub fn show(app: &AppHandle) {
     let Some(panel) = app.get_webview_window("popover") else { return };
     if panel.is_visible().unwrap_or(false) {
         return;
     }
     if let Some(icon) = app.tray_by_id("pim").and_then(|t| t.rect().ok().flatten()) {
-        toggle(app, icon);
+        open(app, &panel, icon);
     }
+}
+
+fn open(app: &AppHandle, panel: &WebviewWindow, icon: Rect) {
+    place(panel, icon);
+    let _ = panel.show();
+    let _ = panel.set_focus();
+    pressed(app, true);
 }
 
 /// Shows the menu bar icon pressed (macOS's rounded highlight behind it) while
