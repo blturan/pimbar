@@ -3,8 +3,10 @@
 use anyhow::{Context, Result, bail};
 use base64::Engine;
 use serde::Deserialize;
-use std::process::Command;
-use std::sync::Mutex;
+use std::os::unix::process::CommandExt;
+use std::process::{Command, Stdio};
+use std::sync::{Mutex, mpsc};
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct Token {
@@ -37,11 +39,32 @@ impl Az {
     }
 }
 
+/// How long `az` may take. It can hang for good on a connection that died
+/// under it (after sleep, or a change of network), and the sync waits on it.
+const TIMEOUT: Duration = Duration::from_secs(60);
+
 fn fetch() -> Result<Token> {
-    let out = Command::new("az")
+    let child = Command::new("az")
         .args(["account", "get-access-token", "--resource", "https://management.azure.com", "-o", "json"])
-        .output()
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .process_group(0)
+        .spawn()
         .context("Unable to run az. Is the Azure CLI installed?")?;
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+    let out = match rx.recv_timeout(TIMEOUT) {
+        Ok(out) => out.context("az failed")?,
+        Err(_) => {
+            // The whole group: az is a shell script that runs Python.
+            let _ = Command::new("/bin/kill").args(["-KILL", "--", &format!("-{pid}")]).status();
+            bail!("az didn't answer within {} seconds", TIMEOUT.as_secs());
+        }
+    };
     if !out.status.success() {
         // az's own first line, e.g. "ERROR: Please run 'az login' to setup account."
         let err = String::from_utf8_lossy(&out.stderr);
