@@ -154,7 +154,7 @@ function approvals() {
     const open = ui.form?.kind === "review" && ui.form.id === r.id;
     const decide = (approve) => run("review", { id: r.id, approve, justification: ui.form.text });
     return h("div", { class: "card" },
-      h("div", { class: "row task tone-warn", title: r.requester },
+      h("div", { class: "row task tone-warn", title: [r.requester, `${r.role} · ${r.scope_name}`].join("\n") },
         mark("waiting"),
         h("div", { class: "grow" },
           h("div", { class: "name" }, who(r)),
@@ -210,7 +210,7 @@ function active() {
         : t
           ? ["running", where, pill("accent", "Stopping")]
           : ["done", where, [pill(null, left(a.end), a.end ? `Until ${clock(a.end)}` : null), stopButton(a, where)]];
-      return h("div", { class: "card" }, h("div", { class: `row task tone-${PHASES[phase].tone}` },
+      return h("div", { class: "card" }, h("div", { class: `row task tone-${PHASES[phase].tone}`, title: [a.role, sub].join("\n") },
         mark(phase),
         h("div", { class: "grow" }, h("div", { class: "name" }, a.role), h("div", { class: "sub" }, sub)),
         right));
@@ -232,7 +232,7 @@ function stopAll(roles) {
 function mine() {
   if (!snap.my_pending.length) return null;
   return section("Your requests", snap.my_pending.length, snap.my_pending.map((r) =>
-    h("div", { class: "card" }, h("div", { class: "row task tone-warn" },
+    h("div", { class: "card" }, h("div", { class: "row task tone-warn", title: [r.role, `${r.scope_name} · ${ago(r.created)}`].join("\n") },
       mark("waiting"),
       h("div", { class: "grow" },
         h("div", { class: "name" }, r.role),
@@ -421,16 +421,19 @@ function hiddenCard() {
     ontoggle: (ev) => ev.target.open ? ui.open.add("settings:hidden") : ui.open.delete("settings:hidden"),
   },
     h("summary", { class: "row" }, chevron(), h("div", { class: "grow name" }, count)),
-    subs.map((id) => h("div", { class: "row role" },
+    subs.map((id) => h("div", { class: "row role", title: subName(id) },
       h("div", { class: "grow" },
         h("div", { class: "name" }, subName(id)),
         h("div", { class: "sub" }, `Subscription · ${plural(snap.eligible.filter((e) => e.subscription_id === id).length, "role")}`)),
       show("subscription", id))),
-    roles.map((e) => h("div", { class: "row role" },
-      h("div", { class: "grow" },
-        h("div", { class: "name" }, e.role),
-        h("div", { class: "sub" }, e.scope_name === subName(e.subscription_id) ? e.scope_name : `${e.scope_name} · ${subName(e.subscription_id)}`)),
-      show("role", roleKey(e)))));
+    roles.map((e) => {
+      const where = e.scope_name === subName(e.subscription_id) ? e.scope_name : `${e.scope_name} · ${subName(e.subscription_id)}`;
+      return h("div", { class: "row role", title: [e.role, where].join("\n") },
+        h("div", { class: "grow" },
+          h("div", { class: "name" }, e.role),
+          h("div", { class: "sub" }, where)),
+        show("role", roleKey(e)));
+    }));
 }
 
 /** Settings: opening at login, sync, notifications, and who's signed in. */
@@ -690,7 +693,7 @@ const subscriptionCard = (q) => ([name, roles]) => {
     oncontextmenu: itemMenu("subscription", id),
     ontoggle: (ev) => { if (!q) ev.target.open ? ui.open.add(name) : ui.open.delete(name); },
   },
-    h("summary", { class: "row" },
+    h("summary", { class: "row", title: name },
       chevron(),
       h("div", { class: "grow name" }, name),
       on > 0 && pill("pass", [svg(PHASES.done.icon), `${on}`], `${on} active`),
@@ -698,7 +701,11 @@ const subscriptionCard = (q) => ([name, roles]) => {
     roles.flatMap((e) => {
       const open = ui.form?.kind === "activate" && ui.form.id === e.id;
       const state = roleState(e);
-      const row = h("div", { class: `row role${state ? ` tone-${PHASES[state.phase].tone}` : ""}`, oncontextmenu: itemMenu("role", roleKey(e)) },
+      const row = h("div", {
+        class: `row role${state ? ` tone-${PHASES[state.phase].tone}` : ""}`,
+        title: [e.role, e.scope_type !== "subscription" && `${SCOPE_KINDS[e.scope_type] ?? e.scope_type} · ${e.scope_name}`].filter(Boolean).join("\n"),
+        oncontextmenu: itemMenu("role", roleKey(e)),
+      },
         // Under the subscription's arrow: the role's mark, as on the cards above.
         state && mark(state.phase, state.title),
         h("div", { class: "grow" },
