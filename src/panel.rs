@@ -39,6 +39,12 @@ pub fn show(app: &AppHandle) {
 }
 
 fn open(app: &AppHandle, panel: &WebviewWindow, icon: Rect) {
+    // Placing has to happen on the main thread, before showing (see `place`).
+    if objc2::MainThreadMarker::new().is_none() {
+        let (app, panel) = (app.clone(), panel.clone());
+        let _ = app.clone().run_on_main_thread(move || open(&app, &panel, icon));
+        return;
+    }
     place(panel, icon);
     let _ = panel.show();
     let _ = panel.set_focus();
@@ -93,5 +99,18 @@ pub fn place(panel: &WebviewWindow, icon: Rect) {
         let right = (m.position().x + m.size().width as i32) as f64 - width - 8.0 * scale;
         x = x.min(right).max(m.position().x as f64 + 8.0 * scale);
     }
-    let _ = panel.set_position(PhysicalPosition::new(x, pos.y + size.height + 4.0 * scale));
+    let y = pos.y + size.height + 4.0 * scale;
+    // Tauri moves a macOS window later, on the main queue, so the panel would
+    // show where it last was and only then jump under the icon. The web view can
+    // keep the old place, and clicks then land above the pointer. Move it now.
+    if let (Some(_), Ok(ns_window)) = (objc2::MainThreadMarker::new(), panel.ns_window()) {
+        use objc2_core_foundation::CGPoint;
+        use objc2_core_graphics::{CGDisplayPixelsHigh, CGMainDisplayID};
+        // AppKit measures from the bottom of the main screen, in points.
+        let screen = CGDisplayPixelsHigh(CGMainDisplayID()) as f64;
+        let window = unsafe { &*ns_window.cast::<objc2_app_kit::NSWindow>() };
+        window.setFrameTopLeftPoint(CGPoint::new(x / scale, screen - y / scale));
+        return;
+    }
+    let _ = panel.set_position(PhysicalPosition::new(x, y));
 }

@@ -22,9 +22,9 @@ base64 = "0.23.1"
 chrono = { version = "0.4.45", features = ["serde"] }
 notify-rust = { version = "4.18", features = ["preview-macos-un"] }
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSButton", "NSControl", "NSFont", "NSFontDescriptor", "NSResponder", "NSView", "NSStatusItem", "NSStatusBarButton", "objc2-core-foundation"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSButton", "NSControl", "NSFont", "NSFontDescriptor", "NSResponder", "NSView", "NSStatusItem", "NSStatusBarButton", "NSWindow", "objc2-core-foundation"] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFAttributedString", "CFCGTypes", "CFDictionary", "CFNumber", "CFString"] }
-objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGBitmapContext", "CGColorSpace", "CGContext", "CGImage"] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGBitmapContext", "CGColorSpace", "CGContext", "CGDirectDisplay", "CGImage"] }
 objc2-core-text = { version = "0.3.2", default-features = false, features = ["std", "CTFont", "CTLine", "CTStringAttributes", "objc2-core-graphics"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSProcessInfo", "NSString"] }
 objc2-service-management = { version = "0.3.2", features = ["SMAppService"] }
