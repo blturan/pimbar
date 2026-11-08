@@ -8,29 +8,28 @@ const HOURS = [1, 2, 4, 8];
 const $ = (id) => document.getElementById(id);
 
 let snap = null;
-/** Whether a mouse button is down: no redraws until it's up (see render). */
-let pressing = false;
 const ui = {
   query: "",
-  /** Subscriptions opened by hand. */
+  /** Groups (subscriptions, history cards, Settings → Hidden) opened by hand, by key. */
   open: new Set(),
   /** The one inline form showing: { kind: "activate" | "review", id, hours, text, busy, error }. */
   form: null,
   /** The last action's result: { tone, text }. */
   flash: null,
-  /** A redraw that waited for typing to stop. */
-  stale: false,
   /** "main", "settings" or "history". */
   view: "main",
 };
 
-/** Builds an element; strings become text nodes, `on…` props become listeners. */
+/** Builds an element; strings become text nodes, `on…` props become handlers,
+ *  `key` tells a redraw which node is which (see morph). */
 function h(tag, props, ...kids) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(props ?? {})) {
     if (v == null || v === false) continue;
-    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    // As properties, not listeners, so a redraw can swap them on a node it keeps.
+    if (k.startsWith("on")) (el.handlers ??= {})[k.slice(2)] = el[k] = v;
     else if (k === "class") el.className = v;
+    else if (k === "key") el.dataset.key = v;
     else el.setAttribute(k, v === true ? "" : v);
   }
   for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) el.append(kid);
@@ -94,11 +93,24 @@ function flash(tone, text) {
 async function run(command, args) {
   try {
     await invoke(command, args);
-    // The form goes; so does the focus in its text box, or the redraw would wait for typing to end.
-    if (ui.form) document.activeElement?.blur();
-    ui.form = null;
   } catch (err) {
-    if (ui.form) ui.form = { ...ui.form, error: String(err) };
+    flash("fail", String(err));
+  }
+  render();
+}
+
+/** Sends the open form. Its buttons grey out meanwhile, so a second click
+ *  can't send it twice; a refusal shows in the form, which stays. */
+async function submit(command, args) {
+  const form = ui.form;
+  if (!form || form.busy) return;
+  form.busy = true;
+  render();
+  try {
+    await invoke(command, args);
+    if (ui.form === form) ui.form = null;
+  } catch (err) {
+    if (ui.form === form) ui.form = { ...form, busy: false, error: String(err) };
     else flash("fail", String(err));
   }
   render();
@@ -110,10 +122,19 @@ function openForm(kind, id) {
   render();
 }
 
+/** Opens or closes a group (a <details>) remembered in `ui.open` under `key`.
+ *  On the summary's click, not its toggle event: toggle fires later, and a
+ *  redraw in between would draw the group as it was. */
+const fold = (key) => (ev) => {
+  ev.preventDefault();
+  if (!ui.open.delete(key)) ui.open.add(key);
+  render();
+};
+
 // ---- Sections --------------------------------------------------------------
 
 function section(title, count, ...body) {
-  return h("section", { class: "section" },
+  return h("section", { class: "section", key: title },
     h("h2", { class: "title" }, title, count != null && h("span", {}, `· ${count}`)),
     body);
 }
@@ -134,8 +155,8 @@ function activateForm(e) {
   if (!hours.length) hours.push(e.max_hours);
   if (!hours.includes(f.hours)) f.hours = hours[0];
   const verb = e.approval ? "Request" : "Elevate";
-  const submit = () => run("activate", { id: e.id, hours: f.hours, justification: f.text });
-  return h("div", { class: "form" },
+  const send = () => submit("activate", { id: e.id, hours: f.hours, justification: f.text });
+  return h("div", { class: "form", key: `form:${e.id}` },
     h("div", { class: "label" }, "Duration"),
     h("div", { class: "choices" }, hours.map((n) =>
       h("button", { class: "choice", "aria-pressed": String(f.hours === n), disabled: f.busy, onclick: () => { f.hours = n; render(); } }, `${n}h`))),
@@ -144,16 +165,17 @@ function activateForm(e) {
     formError(),
     h("div", { class: "actions" },
       h("button", { class: "btn small", disabled: f.busy, onclick: () => { ui.form = null; render(); } }, "Cancel"),
-      h("button", { class: "btn small toned tone-accent", disabled: f.busy, onclick: submit },
-        verb)));
+      h("button", { class: "btn small toned tone-accent", disabled: f.busy, onclick: send },
+        f.busy ? [spin(), verb] : verb)));
 }
 
 function approvals() {
   if (!snap.to_review.length) return null;
   return section("Waiting for your approval", snap.to_review.length, snap.to_review.map((r) => {
     const open = ui.form?.kind === "review" && ui.form.id === r.id;
-    const decide = (approve) => run("review", { id: r.id, approve, justification: ui.form.text });
-    return h("div", { class: "card" },
+    const decide = (approve) => submit("review", { id: r.id, approve, justification: ui.form.text });
+    return h("div", { class: "card", key: `review:${r.id}` },
+      // The tooltip has the requester in full, with their address.
       h("div", { class: "row task tone-warn", title: [r.requester, `${r.role} · ${r.scope_name}`].join("\n") },
         mark("waiting"),
         h("div", { class: "grow" },
@@ -193,7 +215,7 @@ function active() {
   if (!snap.active.length) return null;
   // Stop all, in the title: every role not already stopping, after asking.
   const stoppable = snap.active.filter((a) => !taskFor(a.scope, a.role_def_id));
-  return h("section", { class: "section" },
+  return h("section", { class: "section", key: "Active" },
     h("h2", { class: "title" }, "Active", h("span", {}, `· ${snap.active.length}`),
       stoppable.length > 0 && h("button", { class: "title-link", title: "Stop every active role", onclick: () => stopAll(stoppable) }, "Stop all")),
     snap.active.map((a) => {
@@ -210,7 +232,7 @@ function active() {
         : t
           ? ["running", where, pill("accent", "Stopping")]
           : ["done", where, [pill(null, left(a.end), a.end ? `Until ${clock(a.end)}` : null), stopButton(a, where)]];
-      return h("div", { class: "card" }, h("div", { class: `row task tone-${PHASES[phase].tone}`, title: [a.role, sub].join("\n") },
+      return h("div", { class: "card", key: `active:${a.id}` }, h("div", { class: `row task tone-${PHASES[phase].tone}`, "data-clip": [a.role, sub].join("\n") },
         mark(phase),
         h("div", { class: "grow" }, h("div", { class: "name" }, a.role), h("div", { class: "sub" }, sub)),
         right));
@@ -232,7 +254,7 @@ function stopAll(roles) {
 function mine() {
   if (!snap.my_pending.length) return null;
   return section("Your requests", snap.my_pending.length, snap.my_pending.map((r) =>
-    h("div", { class: "card" }, h("div", { class: "row task tone-warn", title: [r.role, `${r.scope_name} · ${ago(r.created)}`].join("\n") },
+    h("div", { class: "card", key: `pending:${r.id}` }, h("div", { class: "row task tone-warn", "data-clip": [r.role, `${r.scope_name} · ${ago(r.created)}`].join("\n") },
       mark("waiting"),
       h("div", { class: "grow" },
         h("div", { class: "name" }, r.role),
@@ -283,7 +305,7 @@ const setLogin = (on) => invoke("set_login", { on }).catch((err) => flash("fail"
 /** The first-run question: open at login? Asked once. */
 function loginPrompt() {
   if (!snap.ask_login) return null;
-  return h("div", { class: "card toned tone-accent prompt" },
+  return h("div", { class: "card toned tone-accent prompt", key: "login" },
     h("div", { class: "row" },
       h("div", { class: "grow" },
         h("div", { class: "name" }, "Open pimbar at login?"),
@@ -416,19 +438,16 @@ function hiddenCard() {
   }
   const count = [subs.length && plural(subs.length, "subscription"), roles.length && plural(roles.length, "role")].filter(Boolean).join(", ");
   const show = (kind, key) => h("button", { class: "btn small soft", onclick: () => setHidden(kind, key, false) }, "Show");
-  return h("details", {
-    class: "card group", open: ui.open.has("settings:hidden"),
-    ontoggle: (ev) => ev.target.open ? ui.open.add("settings:hidden") : ui.open.delete("settings:hidden"),
-  },
-    h("summary", { class: "row" }, chevron(), h("div", { class: "grow name" }, count)),
-    subs.map((id) => h("div", { class: "row role", title: subName(id) },
+  return h("details", { class: "card group", open: ui.open.has("settings:hidden") },
+    h("summary", { class: "row", onclick: fold("settings:hidden") }, chevron(), h("div", { class: "grow name" }, count)),
+    subs.map((id) => h("div", { class: "row role", key: `sub:${id}`, "data-clip": subName(id) },
       h("div", { class: "grow" },
         h("div", { class: "name" }, subName(id)),
         h("div", { class: "sub" }, `Subscription · ${plural(snap.eligible.filter((e) => e.subscription_id === id).length, "role")}`)),
       show("subscription", id))),
     roles.map((e) => {
       const where = e.scope_name === subName(e.subscription_id) ? e.scope_name : `${e.scope_name} · ${subName(e.subscription_id)}`;
-      return h("div", { class: "row role", title: [e.role, where].join("\n") },
+      return h("div", { class: "row role", key: `role:${e.id}`, "data-clip": [e.role, where].join("\n") },
         h("div", { class: "grow" },
           h("div", { class: "name" }, e.role),
           h("div", { class: "sub" }, where)),
@@ -628,10 +647,10 @@ function taskList() {
   const busy = tasks.filter(isOpen).length;
   // Anything finished: Clear all, in the title, clears it at once (into the history, like the ✕s).
   const finished = tasks.length - busy;
-  return h("section", { class: "section" },
+  return h("section", { class: "section", key: "Tasks" },
     h("h2", { class: "title" }, "Tasks", busy > 0 && h("span", {}, `· ${busy}`),
       finished > 0 && h("button", { class: "title-link", title: "Clear finished tasks", onclick: () => invoke("dismiss_finished") }, "Clear all")),
-    tasks.map((t) => h("div", { class: "card" }, taskRow(t))));
+    tasks.map((t) => h("div", { class: "card", key: `task:${t.id}` }, taskRow(t))));
 }
 
 /** Hiding, by `kind`: a `subscription` (its id) or a `role` (`roleKey`). */
@@ -645,17 +664,17 @@ const itemMenu = (kind, key) => (ev) => { ev.preventDefault(); ev.stopPropagatio
 function eligible() {
   const q = ui.query.trim().toLowerCase();
   const shown = snap.eligible.filter((e) => !isHidden(e));
+  // By subscription id: two can share a name.
   const groups = new Map();
   for (const e of shown) {
-    const name = subName(e.subscription_id);
-    if (q && ![e.role, e.scope_name, name].some((s) => s.toLowerCase().includes(q))) continue;
-    if (!groups.has(name)) groups.set(name, []);
-    groups.get(name).push(e);
+    if (q && ![e.role, e.scope_name, subName(e.subscription_id)].some((s) => s.toLowerCase().includes(q))) continue;
+    if (!groups.has(e.subscription_id)) groups.set(e.subscription_id, []);
+    groups.get(e.subscription_id).push(e);
   }
   // Subscriptions with something active first, then by name; pinned ones in a section of their own.
   const sorted = [...groups].sort(([a, ra], [b, rb]) =>
-    (rb.some(isActive) - ra.some(isActive)) || a.localeCompare(b));
-  const isPinned = ([, roles]) => snap.pinned.includes(roles[0].subscription_id);
+    (rb.some(isActive) - ra.some(isActive)) || subName(a).localeCompare(subName(b)));
+  const isPinned = ([id]) => snap.pinned.includes(id);
   const pinned = sorted.filter(isPinned);
   const rest = sorted.filter((g) => !isPinned(g));
 
@@ -663,15 +682,15 @@ function eligible() {
   const subs = new Set(snap.eligible.filter((e) => snap.hidden.includes(e.subscription_id)).map((e) => e.subscription_id)).size;
   const roles = snap.eligible.filter((e) => roleHidden(e) && !snap.hidden.includes(e.subscription_id)).length;
   const hidden = subs + roles;
-  const hiddenNote = hidden > 0 && h("p", { class: "list-note" },
+  const hiddenNote = hidden > 0 && h("p", { class: "list-note", key: "hidden-note" },
     [subs && plural(subs, "subscription"), roles && plural(roles, "role")].filter(Boolean).join(" and "), " hidden · ",
-    h("a", { href: "#", onclick: (e) => { e.preventDefault(); openSettings(true); ui.open.add("settings:hidden"); render(); } }, "Show in Settings"));
+    h("a", { href: "#", onclick: (e) => { e.preventDefault(); ui.open.add("settings:hidden"); openSettings(true); } }, "Show in Settings"));
 
   const roleCount = (groups) => groups.reduce((n, [, roles]) => n + roles.length, 0);
-  const total = `${roleCount(rest)} in ${rest.length} subscriptions`;
+  const total = `${roleCount(rest)} in ${plural(rest.length, "subscription")}`;
   if (!sorted.length) {
     const empty = q ? `Nothing matches “${ui.query}”.` : hidden ? "Everything is hidden." : "You have no eligible roles.";
-    return section("Eligible", `${shown.length} in ${new Set(shown.map((e) => e.subscription_id)).size} subscriptions`,
+    return section("Eligible", `${shown.length} in ${plural(new Set(shown.map((e) => e.subscription_id)).size, "subscription")}`,
       h("p", { class: "empty" }, empty), hiddenNote);
   }
   return [
@@ -683,17 +702,17 @@ function eligible() {
 
 /** A subscription in the eligible list: a row that opens to its roles. Pinned
  *  and unpinned with a two-finger click, like hiding. */
-const subscriptionCard = (q) => ([name, roles]) => {
+const subscriptionCard = (q) => ([id, roles]) => {
+  const name = subName(id);
   const on = roles.filter(isActive).length;
-  const id = roles[0].subscription_id;
   roles.sort((a, b) => a.role.localeCompare(b.role));
   return h("details", {
-    class: "card group", open: Boolean(q) || ui.open.has(name),
+    // A search opens every subscription it finds something in.
+    class: "card group", key: `sub:${id}`, open: Boolean(q) || ui.open.has(`sub:${id}`),
     // A two-finger click: the app's own menu, with Pin and Hide Subscription.
     oncontextmenu: itemMenu("subscription", id),
-    ontoggle: (ev) => { if (!q) ev.target.open ? ui.open.add(name) : ui.open.delete(name); },
   },
-    h("summary", { class: "row", title: name },
+    h("summary", { class: "row", "data-clip": name, onclick: q ? null : fold(`sub:${id}`) },
       chevron(),
       h("div", { class: "grow name" }, name),
       on > 0 && pill("pass", [svg(PHASES.done.icon), `${on}`], `${on} active`),
@@ -702,8 +721,8 @@ const subscriptionCard = (q) => ([name, roles]) => {
       const open = ui.form?.kind === "activate" && ui.form.id === e.id;
       const state = roleState(e);
       const row = h("div", {
-        class: `row role${state ? ` tone-${PHASES[state.phase].tone}` : ""}`,
-        title: [e.role, e.scope_type !== "subscription" && `${SCOPE_KINDS[e.scope_type] ?? e.scope_type} · ${e.scope_name}`].filter(Boolean).join("\n"),
+        class: `row role${state ? ` tone-${PHASES[state.phase].tone}` : ""}`, key: `role:${e.id}`,
+        "data-clip": [e.role, e.scope_type !== "subscription" && `${SCOPE_KINDS[e.scope_type] ?? e.scope_type} · ${e.scope_name}`].filter(Boolean).join("\n"),
         oncontextmenu: itemMenu("role", roleKey(e)),
       },
         // Under the subscription's arrow: the role's mark, as on the cards above.
@@ -804,11 +823,8 @@ function historyPage() {
     const events = timeline(tasks);
     const latest = events[events.length - 1];
     const count = events.length === 1 ? "1 event" : `${events.length} events`;
-    return h("details", {
-      class: "card group", open: ui.open.has(`history:${key}`),
-      ontoggle: (ev) => ev.target.open ? ui.open.add(`history:${key}`) : ui.open.delete(`history:${key}`),
-    },
-      h("summary", { class: "row" },
+    return h("details", { class: "card group", key: `history:${key}`, open: ui.open.has(`history:${key}`) },
+      h("summary", { class: "row", onclick: fold(`history:${key}`) },
         chevron(),
         twoLines(tasks[0].role, eventPill(latest), `${tasks[0].scope_name} · ${count}`, ago(latest.at))),
       events.map(eventRow));
@@ -816,7 +832,7 @@ function historyPage() {
   return [
     section("Your roles", null, cards),
     reviews.length && section("Your reviews", null,
-      reviews.map((t) => h("div", { class: "card" }, reviewRow(t, when(t.finished ?? t.started))))),
+      reviews.map((t) => h("div", { class: "card", key: `task:${t.id}` }, reviewRow(t, when(t.finished ?? t.started))))),
   ].filter(Boolean);
 }
 
@@ -838,23 +854,82 @@ function applyAppearance() {
   else delete document.documentElement.dataset.theme;
 }
 
-function render() {
-  applyAppearance();
-  // Don't redraw under someone typing a justification; catch up when they leave the field.
-  // Nor mid-click: a redraw between press and release swaps the button under the
-  // pointer, and the click is lost. Catch up once the button comes up.
-  if (pressing || (document.activeElement?.closest?.("#content textarea, #content .step-value") && !ui.form?.busy)) {
-    ui.stale = true;
+/**
+ * Makes `old` look like `fresh` while keeping its nodes, so hover, tooltips,
+ * focus, the caret and the scroll position all survive a redraw, and a click
+ * lands on the button it was aimed at. Children pair up by `key`, else by
+ * position; a node of another kind is swapped out.
+ */
+function morph(old, fresh) {
+  if (old.nodeType === Node.TEXT_NODE) {
+    if (old.data !== fresh.data) old.data = fresh.data;
     return;
   }
-  ui.stale = false;
+  for (const { name } of [...old.attributes]) if (!fresh.hasAttribute(name)) old.removeAttribute(name);
+  for (const { name, value } of fresh.attributes) if (old.getAttribute(name) !== value) old.setAttribute(name, value);
+  for (const ev of new Set([...Object.keys(old.handlers ?? {}), ...Object.keys(fresh.handlers ?? {})])) old[`on${ev}`] = fresh.handlers?.[ev] ?? null;
+  old.handlers = fresh.handlers;
+  // A field touched by hand keeps its own value; the attribute no longer reaches it. Never under someone typing.
+  if (old instanceof HTMLInputElement || old instanceof HTMLTextAreaElement) {
+    if (old.type === "checkbox") old.checked = fresh.checked;
+    else if (old !== document.activeElement && old.value !== fresh.value) old.value = fresh.value;
+    // A textarea's text is only its starting value, set above.
+    if (old instanceof HTMLTextAreaElement) return;
+  }
+  const keyed = new Map();
+  for (let n = old.firstChild; n; n = n.nextSibling) if (n.dataset?.key) keyed.set(n.dataset.key, n);
+  let cur = old.firstChild;
+  for (const want of [...fresh.childNodes]) {
+    const key = want.dataset?.key;
+    const alike = cur && !cur.dataset?.key && cur.nodeType === want.nodeType && cur.nodeName === want.nodeName;
+    const match = key ? keyed.get(key) : alike ? cur : null;
+    if (!match) {
+      old.insertBefore(want, cur);
+      continue;
+    }
+    if (match === cur) cur = cur.nextSibling;
+    else old.insertBefore(match, cur);
+    morph(match, want);
+  }
+  // Whatever's left over wasn't wanted.
+  while (cur) {
+    const next = cur.nextSibling;
+    cur.remove();
+    cur = next;
+  }
+}
 
-  const content = $("content");
-  const scroll = content.scrollTop;
-  content.replaceChildren();
+/** What goes in the middle: a page, the move-to-Applications offer, the first fetch, or the main view. */
+function body() {
+  const banner = ui.flash && h("div", { class: `banner tone-${ui.flash.tone}`, key: "flash" }, ui.flash.text);
+  // From its installer: only the offer to move to Applications.
+  if (snap?.misplaced) return [banner, movePrompt()];
+  if (ui.view !== "main") return snap ? [banner, ui.view === "settings" ? settingsPage() : historyPage()] : [];
+  if (!snap || (snap.loading && !snap.refreshed_at)) {
+    return [snap && loginPrompt(), h("div", { class: "loading", role: "status" },
+      h("div", { class: "spinner", "aria-hidden": "true" }),
+      h("p", { class: "muted" }, "Fetching your access…"))];
+  }
+  return [
+    banner,
+    loginPrompt(),
+    snap.errors.map((e) => h("div", { class: "banner tone-fail" }, e)),
+    snap.notifications === false && h("div", { class: "banner tone-warn", key: "notifications-off" },
+      "Notifications are off, so you won't hear when someone needs your approval. ",
+      h("a", { href: "#", onclick: (e) => { e.preventDefault(); openSettings(true); } }, "Settings")),
+    taskList(),
+    approvals(),
+    active(),
+    mine(),
+    // Pinned and Eligible.
+    eligible(),
+  ];
+}
 
-  const page = ui.view !== "main";
-  $("search-bar").hidden = page;
+function render() {
+  applyAppearance();
+  const page = ui.view !== "main" && !snap?.misplaced;
+  $("search-bar").hidden = page || Boolean(snap?.misplaced);
   $("page-head").hidden = !page;
   $("page-title").textContent = ui.view === "settings" ? "Settings" : "History";
   $("clear-history").hidden = ui.view !== "history" || !snap?.history.length;
@@ -862,50 +937,23 @@ function render() {
   // A newer pimbar: a dot on the gear, which leads to Settings → Updates.
   $("settings").classList.toggle("dot", Boolean(snap?.update?.available));
   $("history").classList.toggle("on", ui.view === "history");
-  // From its installer: only the offer to move to Applications.
-  if (snap?.misplaced) {
-    $("search-bar").hidden = true;
-    $("page-head").hidden = true;
-    content.append(...[ui.flash && h("div", { class: `banner tone-${ui.flash.tone}` }, ui.flash.text), movePrompt()].filter(Boolean));
-    return;
-  }
-  if (page && snap) {
-    const body = ui.view === "settings" ? settingsPage() : historyPage();
-    content.append(...[ui.flash && h("div", { class: `banner tone-${ui.flash.tone}` }, ui.flash.text), ...body].filter(Boolean));
-    return;
-  }
+  $("refresh").classList.toggle("busy", Boolean(snap?.loading));
 
-  if (!snap || (snap.loading && !snap.refreshed_at)) {
-    const prompt = snap && loginPrompt();
-    if (prompt) content.append(prompt);
-    content.append(h("div", { class: "loading", role: "status" },
-      h("div", { class: "spinner", "aria-hidden": "true" }),
-      h("p", { class: "muted" }, "Fetching your access…")));
-    return;
-  }
-  $("refresh").classList.toggle("busy", snap.loading);
+  const content = $("content");
+  morph(content, h("main", { id: "content" }, body()));
 
-  content.append(
-    ...[
-      ui.flash && h("div", { class: `banner tone-${ui.flash.tone}` }, ui.flash.text),
-      loginPrompt(),
-      ...snap.errors.map((e) => h("div", { class: "banner tone-fail" }, e)),
-      snap.notifications === false && h("div", { class: "banner tone-warn" },
-        "Notifications are off, so you won't hear when someone needs your approval. ",
-        h("a", { href: "#", onclick: (e) => { e.preventDefault(); openSettings(true); } }, "Settings")),
-      taskList(),
-      approvals(),
-      active(),
-      mine(),
-      // Pinned and Eligible.
-      ...[eligible()].flat(),
-    ].filter(Boolean));
-  content.scrollTop = scroll;
+  // A tooltip only where a row's text is cut short (`data-clip` says what it would say).
+  for (const el of content.querySelectorAll("[data-clip]")) {
+    const cut = [...el.querySelectorAll(".name, .sub, .where")].some((n) => n.scrollWidth > n.clientWidth);
+    if (cut) el.title = el.dataset.clip;
+    else el.removeAttribute("title");
+  }
 
   lastSync();
 
+  // A form that's just opened puts you in its text box, caret at the end.
   const focus = content.querySelector("[data-autofocus]");
-  if (focus && !focus.disabled) {
+  if (focus && !focus.disabled && focus !== document.activeElement) {
     focus.focus();
     focus.setSelectionRange(focus.value.length, focus.value.length);
   }
@@ -932,17 +980,6 @@ $("settings").addEventListener("click", () => show(ui.view === "settings" ? "mai
 $("history").addEventListener("click", () => show(ui.view === "history" ? "main" : "history"));
 $("clear-history").addEventListener("click", () => invoke("clear_history"));
 $("back").addEventListener("click", () => openSettings(false));
-$("content").addEventListener("focusout", () => setTimeout(() => ui.stale && render()));
-// A mouse button released outside the panel, or the panel losing focus, counts as
-// up too, so the redraws never stay held back.
-const released = () => { pressing = false; setTimeout(() => ui.stale && render()); };
-// Only the main button: a two-finger click opens a menu that keeps its release
-// from the page, and would hold the redraws back until the next click.
-document.addEventListener("pointerdown", (e) => { if (e.button === 0) pressing = true; }, true);
-document.addEventListener("contextmenu", released, true);
-document.addEventListener("pointerup", released, true);
-document.addEventListener("pointercancel", released, true);
-window.addEventListener("blur", released);
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
