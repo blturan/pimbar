@@ -54,7 +54,7 @@ resources. Entra ID roles and PIM for Groups aren't supported yet.
   signed in:
 
   ```sh
-  brew install azure-cli
+  brew install --cask azure-cli
   az login
   ```
 

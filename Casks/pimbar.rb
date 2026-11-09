@@ -23,7 +23,7 @@ cask "pimbar" do
   # Opening at login uses SMAppService, new in macOS 13.
   depends_on macos: :ventura
   # pimbar signs in to Azure with the Azure CLI's token.
-  depends_on formula: "azure-cli"
+  depends_on cask: "azure-cli"
 
   app "pimbar.app"
 
