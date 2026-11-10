@@ -46,7 +46,7 @@ use sync::poll;
 use view::{badge, set_icon};
 
 fn main() {
-    fix_path();
+    fix_env();
     let shared = Shared::new();
 
     tauri::Builder::default()
@@ -206,31 +206,31 @@ fn main() {
         });
 }
 
-/// An app started from Finder doesn't get the shell's `PATH`, so it wouldn't
-/// find `az`: take the login shell's.
+/// An app started from Finder gets a bare environment, not the shell's: it
+/// wouldn't find `az` on its `PATH`, nor the login if `AZURE_CONFIG_DIR` moves
+/// it out of `~/.azure`. Take the login shell's environment.
 #[cfg(target_os = "macos")]
-fn fix_path() {
-    const START: &str = "__PIMBAR_PATH_START__";
-    const END: &str = "__PIMBAR_PATH_END__";
+fn fix_env() {
+    const START: &str = "__PIMBAR_ENV_START__";
+    const END: &str = "__PIMBAR_ENV_END__";
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    let from_shell = Command::new(shell)
-        .args(["-ilc", &format!("printf '{START}%s{END}' \"$PATH\"")])
+    let out = Command::new(shell)
+        .args(["-ilc", &format!("printf {START}; /usr/bin/env -0; printf {END}")])
         .output()
-        .ok()
-        .and_then(|out| String::from_utf8(out.stdout).ok())
-        .and_then(|text| Some(text.split_once(START)?.1.split_once(END)?.0.to_string()));
-    let usual = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
-    let path = [from_shell.as_deref(), std::env::var("PATH").ok().as_deref(), Some(usual)]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(":");
+        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+        .unwrap_or_default();
+    let env = out.split_once(START).and_then(|(_, rest)| rest.split_once(END)).map_or("", |(env, _)| env);
     // Before any other thread exists, so nothing reads the environment while it changes.
-    unsafe { std::env::set_var("PATH", path) };
+    for (key, value) in env.split('\0').filter_map(|var| var.split_once('=')) {
+        unsafe { std::env::set_var(key, value) };
+    }
+    let path = std::env::var("PATH").unwrap_or_default();
+    let usual = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+    unsafe { std::env::set_var("PATH", format!("{path}:{usual}")) };
 }
 
 #[cfg(not(target_os = "macos"))]
-fn fix_path() {}
+fn fix_env() {}
 
 /// Keeps macOS from napping pimbar. With the panel closed it has no window on
 /// screen, and App Nap would hold back its timers: the polls, and so the
