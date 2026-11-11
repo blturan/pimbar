@@ -94,3 +94,25 @@ fn claims(jwt: &str) -> Option<serde_json::Value> {
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload).ok()?;
     serde_json::from_slice(&bytes).ok()
 }
+
+/// An app started from Finder gets a bare environment, not the shell's: it
+/// wouldn't find `az` on its `PATH`, nor the login if `AZURE_CONFIG_DIR` moves
+/// it out of `~/.azure`. Take the login shell's environment.
+pub fn fix_env() {
+    const START: &str = "__PIMBAR_ENV_START__";
+    const END: &str = "__PIMBAR_ENV_END__";
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    let out = Command::new(shell)
+        .args(["-ilc", &format!("printf {START}; /usr/bin/env -0; printf {END}")])
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+        .unwrap_or_default();
+    let env = out.split_once(START).and_then(|(_, rest)| rest.split_once(END)).map_or("", |(env, _)| env);
+    // Before any other thread exists, so nothing reads the environment while it changes.
+    for (key, value) in env.split('\0').filter_map(|var| var.split_once('=')) {
+        unsafe { std::env::set_var(key, value) };
+    }
+    let path = std::env::var("PATH").unwrap_or_default();
+    let usual = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+    unsafe { std::env::set_var("PATH", format!("{path}:{usual}")) };
+}

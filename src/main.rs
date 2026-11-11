@@ -31,22 +31,17 @@ mod tasks;
 mod update;
 mod view;
 
-use panel::{PANEL, closed, show, toggle};
-use settings::Settings;
-use state::{Shared, Snapshot};
-use std::process::Command;
+use panel::{closed, show, toggle};
+use state::Shared;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
 use std::time::Duration;
-use tauri::image::Image;
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, RunEvent, Theme, WebviewUrl, WebviewWindowBuilder, WindowEvent};
-use policies::load_json;
-use sync::poll;
+use tauri::{Manager, RunEvent, Theme, WindowEvent};
+use sync::{poll, stay_awake};
 use view::{badge, set_icon};
 
 fn main() {
-    fix_env();
+    az::fix_env();
     let shared = Shared::new();
 
     tauri::Builder::default()
@@ -81,62 +76,16 @@ fn main() {
             commands::quit,
         ])
         .setup(move |app| {
-            #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             stay_awake();
 
-            let panel = WebviewWindowBuilder::new(app, "popover", WebviewUrl::App("index.html".into()))
-                .title("pimbar")
-                .inner_size(PANEL.0, PANEL.1)
-                .resizable(false)
-                .decorations(false)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                // See-through, so the page can round its own corners (rounded.css);
-                // square styles fill it edge to edge and look as before.
-                .transparent(true)
-                .visible(false)
-                .build()?;
-            shared.dark.store(matches!(panel.theme(), Ok(Theme::Dark)), Relaxed);
+            panel::create(app, &shared)?;
 
-            let (rgba, w, h) = icon::render(&badge(&shared, &Snapshot::default()));
-            TrayIconBuilder::with_id("pim")
-                .icon(Image::new_owned(rgba, w, h))
-                .icon_as_template(false)
-                // Either click opens the panel; quitting is in the panel, behind a question.
-                .on_tray_icon_event(|tray, e| {
-                    if let TrayIconEvent::Click { button: MouseButton::Left | MouseButton::Right, button_state: MouseButtonState::Up, rect, .. } = e {
-                        toggle(tray.app_handle(), rect);
-                    }
-                })
-                .build(app)?;
-
+            shared.restore(&app.path().app_config_dir()?, &app.package_info().version.to_string());
             // Open the panel by itself the first time, to ask about opening at
             // login, or to offer moving to Applications.
-            let dir = app.path().app_config_dir()?;
-            let settings = Settings::load(&dir.join("settings.json"));
-            shared.sync_seconds.store(settings.sync_seconds, Relaxed);
-            shared.roles_seconds.store(settings.roles_seconds, Relaxed);
-            shared.manual.store(settings.manual, Relaxed);
-            let _ = shared.settings.set(dir.join("settings.json"));
-            let _ = shared.history.set(dir.join("history.json"));
-            *shared.policies.lock().unwrap() = load_json(&dir.join("policies.json")).unwrap_or_default();
-            let _ = shared.policies_path.set(dir.join("policies.json"));
             let ask = {
                 let mut snap = shared.snap.lock().unwrap();
-                snap.history = tasks::load_history(&dir.join("history.json"));
-                let next = snap.history.iter().map(|t| t.id).max().unwrap_or(0) + 1;
-                shared.next_task.store(next, Relaxed);
-                snap.login = login::status();
-                snap.version = app.package_info().version.to_string();
-                snap.sync_seconds = settings.sync_seconds;
-                snap.roles_seconds = settings.roles_seconds;
-                snap.manual = settings.manual;
-                snap.appearance = settings.appearance.clone();
-                snap.hidden = settings.hidden.clone();
-                snap.hidden_roles = settings.hidden_roles.clone();
-                snap.pinned = settings.pinned.clone();
-                snap.ask_login = !settings.asked_login && snap.login == login::Login::Off;
                 // From its installer, moving to Applications comes first: no
                 // other question, and nothing from Azure until it has.
                 if let Some(image) = install::check() {
@@ -199,53 +148,8 @@ fn main() {
             // macOS brings pimbar forward (a click on one of its notifications, or
             // opening it again from Finder): with nothing to show it would sit
             // there frontmost, so show the panel.
-            #[cfg(target_os = "macos")]
             if let RunEvent::Reopen { .. } = event {
                 show(app);
             }
         });
 }
-
-/// An app started from Finder gets a bare environment, not the shell's: it
-/// wouldn't find `az` on its `PATH`, nor the login if `AZURE_CONFIG_DIR` moves
-/// it out of `~/.azure`. Take the login shell's environment.
-#[cfg(target_os = "macos")]
-fn fix_env() {
-    const START: &str = "__PIMBAR_ENV_START__";
-    const END: &str = "__PIMBAR_ENV_END__";
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    let out = Command::new(shell)
-        .args(["-ilc", &format!("printf {START}; /usr/bin/env -0; printf {END}")])
-        .output()
-        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
-        .unwrap_or_default();
-    let env = out.split_once(START).and_then(|(_, rest)| rest.split_once(END)).map_or("", |(env, _)| env);
-    // Before any other thread exists, so nothing reads the environment while it changes.
-    for (key, value) in env.split('\0').filter_map(|var| var.split_once('=')) {
-        unsafe { std::env::set_var(key, value) };
-    }
-    let path = std::env::var("PATH").unwrap_or_default();
-    let usual = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
-    unsafe { std::env::set_var("PATH", format!("{path}:{usual}")) };
-}
-
-#[cfg(not(target_os = "macos"))]
-fn fix_env() {}
-
-/// Keeps macOS from napping pimbar. With the panel closed it has no window on
-/// screen, and App Nap would hold back its timers: the polls, and so the
-/// notifications, could come minutes late. The Mac may still sleep.
-#[cfg(target_os = "macos")]
-fn stay_awake() {
-    use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
-    let activity = NSProcessInfo::processInfo().beginActivityWithOptions_reason(
-        NSActivityOptions::UserInitiatedAllowingIdleSystemSleep,
-        &NSString::from_str("Checking PIM requests and approvals"),
-    );
-    // For as long as pimbar runs.
-    std::mem::forget(activity);
-}
-
-#[cfg(not(target_os = "macos"))]
-fn stay_awake() {}
-

@@ -264,3 +264,16 @@ pub fn check_update(app: &AppHandle, shared: &Arc<Shared>, force: bool) {
         publish(&app, &shared);
     });
 }
+
+/// Keeps macOS from napping pimbar. With the panel closed it has no window on
+/// screen, and App Nap would hold back its timers: the polls, and so the
+/// notifications, could come minutes late. The Mac may still sleep.
+pub fn stay_awake() {
+    use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
+    let activity = NSProcessInfo::processInfo().beginActivityWithOptions_reason(
+        NSActivityOptions::UserInitiatedAllowingIdleSystemSleep,
+        &NSString::from_str("Checking PIM requests and approvals"),
+    );
+    // For as long as pimbar runs.
+    std::mem::forget(activity);
+}

@@ -3,11 +3,14 @@
 
 use crate::pim::{Active, Eligible, Policy, Request};
 use crate::tasks::Task;
-use crate::{az, login, update};
+use crate::policies::load_json;
+use crate::settings::Settings;
+use crate::{az, login, tasks, update};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, AtomicU64};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -120,6 +123,34 @@ impl Shared {
             release: Mutex::new(None),
             checking_update: AtomicBool::new(false),
             installer: OnceLock::new(),
-            })
+        })
+    }
+
+    /// Takes up where the last run left off: the settings, the history and the
+    /// policies, from `dir`.
+    pub fn restore(&self, dir: &Path, version: &str) {
+        let settings = Settings::load(&dir.join("settings.json"));
+        self.sync_seconds.store(settings.sync_seconds, Relaxed);
+        self.roles_seconds.store(settings.roles_seconds, Relaxed);
+        self.manual.store(settings.manual, Relaxed);
+        let _ = self.settings.set(dir.join("settings.json"));
+        let _ = self.history.set(dir.join("history.json"));
+        *self.policies.lock().unwrap() = load_json(&dir.join("policies.json")).unwrap_or_default();
+        let _ = self.policies_path.set(dir.join("policies.json"));
+
+        let mut snap = self.snap.lock().unwrap();
+        snap.history = tasks::load_history(&dir.join("history.json"));
+        let next = snap.history.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+        self.next_task.store(next, Relaxed);
+        snap.login = login::status();
+        snap.version = version.to_string();
+        snap.sync_seconds = settings.sync_seconds;
+        snap.roles_seconds = settings.roles_seconds;
+        snap.manual = settings.manual;
+        snap.appearance = settings.appearance;
+        snap.hidden = settings.hidden;
+        snap.hidden_roles = settings.hidden_roles;
+        snap.pinned = settings.pinned;
+        snap.ask_login = !settings.asked_login && snap.login == login::Login::Off;
     }
 }

@@ -1,16 +1,49 @@
 //! The panel under the menu bar icon: opening it there, and what closing it means.
 
-use crate::state::Shared;
+use crate::icon;
+use crate::state::{Shared, Snapshot};
 use crate::tasks::{self, Task};
-use crate::view::publish;
+use crate::view::{badge, publish};
 use chrono::Utc;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
-use tauri::{AppHandle, Manager};
+use tauri::image::Image;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{App, AppHandle, Manager, Theme, WebviewUrl, WebviewWindowBuilder};
 use tauri::{Emitter, PhysicalPosition, Rect, WebviewWindow};
 
 /// The panel's size, in points.
 pub const PANEL: (f64, f64) = (400.0, 620.0);
+
+/// Puts the icon in the menu bar, and the panel, hidden, under it.
+pub fn create(app: &App, shared: &Shared) -> tauri::Result<()> {
+    let panel = WebviewWindowBuilder::new(app, "popover", WebviewUrl::App("index.html".into()))
+        .title("pimbar")
+        .inner_size(PANEL.0, PANEL.1)
+        .resizable(false)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        // See-through, so the page can round its own corners (rounded.css);
+        // square styles fill it edge to edge and look as before.
+        .transparent(true)
+        .visible(false)
+        .build()?;
+    shared.dark.store(matches!(panel.theme(), Ok(Theme::Dark)), Relaxed);
+
+    let (rgba, w, h) = icon::render(&badge(shared, &Snapshot::default()));
+    TrayIconBuilder::with_id("pim")
+        .icon(Image::new_owned(rgba, w, h))
+        .icon_as_template(false)
+        // Either click opens the panel; quitting is in the panel, behind a question.
+        .on_tray_icon_event(|tray, e| {
+            if let TrayIconEvent::Click { button: MouseButton::Left | MouseButton::Right, button_state: MouseButtonState::Up, rect, .. } = e {
+                toggle(tray.app_handle(), rect);
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
 
 /// Opens the panel under the icon, or closes it.
 pub fn toggle(app: &AppHandle, icon: Rect) {
